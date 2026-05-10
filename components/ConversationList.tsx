@@ -37,7 +37,7 @@ export function ConversationList({ conversations, activeId, onSelect }: Conversa
   })
 
   return (
-    <div className="w-[340px] flex-shrink-0 flex flex-col border-r border-gray-100 bg-white h-full">
+    <div className="w-[340px] flex-shrink-0 flex flex-col border-r border-gray-100 bg-white min-h-0">
       {/* Header */}
       <div className="px-4 pt-5 pb-3 border-b border-gray-100">
         <h2 className="text-base font-semibold text-gray-900 mb-3">Inbox</h2>
@@ -72,7 +72,7 @@ export function ConversationList({ conversations, activeId, onSelect }: Conversa
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {filtered.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-sm text-gray-400">
             No conversations found

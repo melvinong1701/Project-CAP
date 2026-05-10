@@ -61,7 +61,7 @@ export default function Home() {
   }))
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white">
+    <div className="flex overflow-hidden bg-white" style={{ height: '100dvh' }}>
       <Sidebar
         stores={storesWithCounts}
         activeFilter={activeFilter}

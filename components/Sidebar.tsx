@@ -21,7 +21,7 @@ export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) 
   const totalUnread = stores.reduce((sum, s) => sum + s.unreadCount, 0)
 
   return (
-    <div className="w-60 flex-shrink-0 flex flex-col border-r border-gray-100 bg-white h-full">
+    <div className="w-60 flex-shrink-0 flex flex-col border-r border-gray-100 bg-white min-h-0">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-gray-100">
         <div className="flex items-center gap-2.5">

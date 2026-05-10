@@ -58,9 +58,9 @@ export function ConversationDetail({
   }
 
   return (
-    <div className="flex flex-1 min-w-0 h-full">
+    <div className="flex flex-1 min-w-0 min-h-0">
       {/* Main detail */}
-      <div className="flex flex-col flex-1 min-w-0 h-full">
+      <div className="flex flex-col flex-1 min-w-0 min-h-0">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-white flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
@@ -97,7 +97,7 @@ export function ConversationDetail({
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto bg-white">
+        <div className="flex-1 min-h-0 overflow-y-auto bg-white">
           <MessageThread messages={conversation.messages} />
         </div>
 
