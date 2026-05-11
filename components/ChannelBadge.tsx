@@ -6,7 +6,9 @@ const channelConfig: Record<Channel, { label: string; color: string; bg: string;
   shopee: { label: 'Shopee', color: 'text-orange-600', bg: 'bg-orange-50', icon: '🛍' },
   lazada: { label: 'Lazada', color: 'text-purple-600', bg: 'bg-purple-50', icon: '🏪' },
   tiktok_shop: { label: 'TikTok', color: 'text-pink-600', bg: 'bg-pink-50', icon: '♪' },
-  whatsapp: { label: 'WhatsApp', color: 'text-green-600', bg: 'bg-green-50', icon: '💬' },
+  whatsapp: { label: 'WhatsApp', color: 'text-green-600', bg: 'bg-green-50', icon: 'W' },
+  facebook_messenger: { label: 'Messenger', color: 'text-blue-700', bg: 'bg-blue-50', icon: 'M' },
+  instagram: { label: 'Instagram', color: 'text-pink-700', bg: 'bg-pink-50', icon: '◈' },
 }
 
 interface ChannelBadgeProps {

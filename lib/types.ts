@@ -1,4 +1,4 @@
-export type Channel = 'telegram' | 'shopee' | 'lazada' | 'tiktok_shop' | 'whatsapp'
+export type Channel = 'telegram' | 'shopee' | 'lazada' | 'tiktok_shop' | 'whatsapp' | 'facebook_messenger' | 'instagram'
 
 export type AiConfidence = 'high' | 'medium' | 'low'
 

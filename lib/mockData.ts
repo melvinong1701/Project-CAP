@@ -3,6 +3,9 @@ import { Conversation, Store } from './types'
 export const mockStores: Store[] = [
   { id: 'store-1', name: 'TechGear SG', channel: 'telegram', unreadCount: 4 },
   { id: 'store-2', name: 'HomeDecor MY', channel: 'telegram', unreadCount: 2 },
+  { id: 'store-3', name: 'TechGear SG', channel: 'whatsapp', unreadCount: 2 },
+  { id: 'store-4', name: 'HomeDecor MY', channel: 'instagram', unreadCount: 1 },
+  { id: 'store-5', name: 'TechGear SG', channel: 'facebook_messenger', unreadCount: 1 },
 ]
 
 const now = new Date()
@@ -316,6 +319,126 @@ export const mockConversations: Conversation[] = [
         sender: 'buyer',
         content: 'Is the USB-C hub compatible with M3 MacBook Pro?',
         timestamp: hoursAgo(8),
+      },
+    ],
+  },
+
+  // --- WhatsApp Business conversations ---
+  {
+    id: 'conv-9',
+    organizationId: 'org-1',
+    channel: 'whatsapp',
+    storeId: 'store-3',
+    storeName: 'TechGear SG',
+    externalId: 'wa-201',
+    sender: { name: 'Chong Wei Jie' },
+    lastMessage: 'Hi, is the keyboard still available? I saw it on Shopee',
+    lastMessageAt: minsAgo(12),
+    isRead: false,
+    tags: ['product-query'],
+    aiSuggestion: {
+      text: 'Hi Wei Jie! Yes, the Mechanical Keyboard TKL is still available. We have it in stock at SGD 149. Would you like to place an order directly, or shall I send you the Shopee listing link?',
+      confidence: 'high',
+      autoSent: false,
+    },
+    messages: [
+      {
+        id: 'msg-9-1',
+        conversationId: 'conv-9',
+        sender: 'buyer',
+        content: 'Hi, is the keyboard still available? I saw it on Shopee',
+        timestamp: minsAgo(12),
+      },
+    ],
+  },
+  {
+    id: 'conv-10',
+    organizationId: 'org-1',
+    channel: 'whatsapp',
+    storeId: 'store-3',
+    storeName: 'TechGear SG',
+    externalId: 'wa-202',
+    sender: { name: 'Farah Diyana' },
+    lastMessage: 'Shipping to Johor Bahru berapa hari?',
+    lastMessageAt: minsAgo(35),
+    isRead: false,
+    tags: ['shipping'],
+    aiSuggestion: {
+      text: 'Hi Farah! Penghantaran ke Johor Bahru biasanya mengambil masa 2–3 hari bekerja melalui J&T Express. Yuran penghantaran adalah RM8 atau percuma untuk pembelian melebihi RM150. Ada lagi soalan?',
+      confidence: 'high',
+      autoSent: false,
+    },
+    messages: [
+      {
+        id: 'msg-10-1',
+        conversationId: 'conv-10',
+        sender: 'buyer',
+        content: 'Shipping to Johor Bahru berapa hari?',
+        timestamp: minsAgo(35),
+      },
+    ],
+  },
+
+  // --- Instagram DM conversations ---
+  {
+    id: 'conv-11',
+    organizationId: 'org-1',
+    channel: 'instagram',
+    storeId: 'store-4',
+    storeName: 'HomeDecor MY',
+    externalId: 'ig-301',
+    sender: { name: 'Alyssa Tan' },
+    lastMessage: 'Omg love this lamp 😍 can I order in bulk for my cafe?',
+    lastMessageAt: minsAgo(22),
+    isRead: false,
+    tags: ['bulk-order', 'product-query'],
+    aiSuggestion: {
+      text: 'Hi Alyssa! So glad you love it 😊 Yes, we do bulk orders! For 10+ units we offer 15% off, and for 20+ units it\'s 25% off. DM us your quantity and delivery address and we\'ll send you a custom quote within 24 hours!',
+      confidence: 'medium',
+      autoSent: false,
+    },
+    messages: [
+      {
+        id: 'msg-11-1',
+        conversationId: 'conv-11',
+        sender: 'buyer',
+        content: 'Omg love this lamp 😍 can I order in bulk for my cafe?',
+        timestamp: minsAgo(22),
+      },
+    ],
+  },
+
+  // --- Facebook Messenger conversations ---
+  {
+    id: 'conv-12',
+    organizationId: 'org-1',
+    channel: 'facebook_messenger',
+    storeId: 'store-5',
+    storeName: 'TechGear SG',
+    externalId: 'fb-401',
+    sender: { name: 'Kevin Ong' },
+    lastMessage: 'Hi I want to return my item, I bought the wrong model',
+    lastMessageAt: hoursAgo(1),
+    isRead: false,
+    tags: ['return'],
+    aiSuggestion: {
+      text: 'Hi Kevin! No worries, we can help with that. Returns are accepted within 14 days of delivery for unopened or unused items. Please share your order number and we\'ll get the process started right away.',
+      confidence: 'high',
+      autoSent: false,
+    },
+    order: {
+      id: 'TG-88510',
+      status: 'Delivered',
+      items: 'USB-C Hub 7-in-1 x1',
+      total: 'SGD 79.00',
+    },
+    messages: [
+      {
+        id: 'msg-12-1',
+        conversationId: 'conv-12',
+        sender: 'buyer',
+        content: 'Hi I want to return my item, I bought the wrong model',
+        timestamp: hoursAgo(1),
       },
     ],
   },
