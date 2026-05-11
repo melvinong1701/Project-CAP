@@ -664,8 +664,8 @@ export default function SettingsPage() {
               </div>
 
               {/* Members table */}
-              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden mb-6">
-                <div className="px-5 py-3 border-b border-gray-100 flex items-center">
+              <div className="bg-white rounded-2xl border border-gray-100 mb-6">
+                <div className="px-5 py-3 border-b border-gray-100 flex items-center rounded-t-2xl overflow-hidden">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex-1">
                     Members · {team.length}
                   </p>
