@@ -3,8 +3,8 @@ import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Store, Bot, Bell, Users, CreditCard,
-  Check, X, Plus, Mail, Shield, Eye, ChevronDown,
-  Crown, UserCog, MessageSquare, Trash2, MoreVertical,
+  Check, X, Plus, Mail, Eye, ChevronDown,
+  Crown, UserCog, MessageSquare, Trash2,
   ExternalLink, AlertCircle, Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -384,7 +384,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
         <div className="flex items-start justify-between">
           <div>
             <p className="font-semibold text-gray-900">Invite team member</p>
-            <p className="text-xs text-gray-400 mt-0.5">They'll receive an email with a sign-in link.</p>
+            <p className="text-xs text-gray-400 mt-0.5">They&apos;ll receive an email with a sign-in link.</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <X className="w-4 h-4" />
