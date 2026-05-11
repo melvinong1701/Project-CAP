@@ -1,8 +1,8 @@
 'use client'
-import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Store } from '@/lib/types'
 import { ChannelBadge } from './ChannelBadge'
-import { Inbox, BookMarked, UserCheck, Clock, Settings, X, Store as StoreIcon, Bot, Bell, Users, CreditCard } from 'lucide-react'
+import { Inbox, BookMarked, UserCheck, Clock, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface SidebarProps {
@@ -18,89 +18,25 @@ const navItems = [
   { id: 'snoozed', label: 'Snoozed', icon: Clock },
 ]
 
-const settingsSections = [
-  {
-    icon: StoreIcon,
-    label: 'Connected stores',
-    description: 'Manage your Shopee, Lazada and TikTok Shop connections',
-    badge: 'Coming soon',
-  },
-  {
-    icon: Bot,
-    label: 'AI settings',
-    description: 'Confidence thresholds, auto-send rules, tone preferences',
-    badge: 'Coming soon',
-  },
-  {
-    icon: Bell,
-    label: 'Notifications',
-    description: 'Alert preferences for new messages and escalations',
-    badge: 'Coming soon',
-  },
-  {
-    icon: Users,
-    label: 'Team & agents',
-    description: 'Invite agents, set roles and assignment rules',
-    badge: 'Coming soon',
-  },
-  {
-    icon: CreditCard,
-    label: 'Plan & billing',
-    description: 'Usage, subscription and overage settings',
-    badge: 'Coming soon',
-  },
-]
-
 export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) {
+  const router = useRouter()
   const totalUnread = stores.reduce((sum, s) => sum + s.unreadCount, 0)
-  const [showSettings, setShowSettings] = useState(false)
 
   return (
-    <div className="w-60 flex-shrink-0 flex flex-col border-r border-gray-100 bg-white min-h-0 relative">
+    <div className="w-60 flex-shrink-0 flex flex-col border-r border-gray-100 bg-white min-h-0">
 
-      {/* Settings panel overlay */}
-      {showSettings && (
-        <div className="absolute inset-0 z-10 bg-white flex flex-col">
-          <div className="px-4 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">Settings</h2>
-            <button
-              onClick={() => setShowSettings(false)}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
-            {settingsSections.map(({ icon: Icon, label, description, badge }) => (
-              <div key={label} className="px-3 py-3 rounded-lg hover:bg-gray-50 cursor-default">
-                <div className="flex items-center gap-2.5 mb-1">
-                  <Icon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                  <span className="text-sm font-medium text-gray-700">{label}</span>
-                  <span className="ml-auto text-[10px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
-                    {badge}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-400 pl-6.5 leading-relaxed">{description}</p>
-              </div>
-            ))}
-          </div>
-          <div className="px-4 py-3 border-t border-gray-100">
-            <p className="text-xs text-gray-400 text-center">Project CAP · Early access</p>
-          </div>
-        </div>
-      )}
       {/* Logo */}
       <div className="px-5 py-5 border-b border-gray-100">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">O</span>
+            <span className="text-white font-bold text-sm">C</span>
           </div>
           <span className="font-semibold text-gray-900 text-[15px]">Project CAP</span>
         </div>
       </div>
 
       {/* Nav */}
-      <div className="px-3 py-3 flex-1">
+      <div className="px-3 py-3 flex-1 min-h-0 overflow-y-auto">
         <nav className="space-y-0.5 mb-6">
           {navItems.map(({ id, label, icon: Icon }) => (
             <button
@@ -155,7 +91,7 @@ export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) 
       </div>
 
       {/* Footer */}
-      <div className="px-3 py-3 border-t border-gray-100 flex items-center justify-between">
+      <div className="px-3 py-3 border-t border-gray-100 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
             M
@@ -163,8 +99,9 @@ export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) 
           <span className="text-sm text-gray-700 font-medium">Melvin</span>
         </div>
         <button
-          onClick={() => setShowSettings(true)}
+          onClick={() => router.push('/settings')}
           className="text-gray-400 hover:text-gray-600 transition-colors"
+          title="Settings"
         >
           <Settings className="w-4 h-4" />
         </button>

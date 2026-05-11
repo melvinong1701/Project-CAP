@@ -14,7 +14,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "OakChat",
+  title: "Project CAP",
   description: "AI-native chat aggregator for SEA marketplace sellers",
 };
 
