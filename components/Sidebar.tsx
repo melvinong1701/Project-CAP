@@ -95,7 +95,7 @@ export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) 
           <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center">
             <span className="text-white font-bold text-sm">O</span>
           </div>
-          <span className="font-semibold text-gray-900 text-[15px]">OakChat</span>
+          <span className="font-semibold text-gray-900 text-[15px]">Project CAP</span>
         </div>
       </div>
 
