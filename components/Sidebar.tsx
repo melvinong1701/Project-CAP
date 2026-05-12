@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { Store } from '@/lib/types'
 import { ChannelBadge } from './ChannelBadge'
-import { Inbox, BookMarked, UserCheck, Clock, Settings } from 'lucide-react'
+import { Inbox, BookMarked, UserCheck, Clock, Settings, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface SidebarProps {
@@ -37,6 +37,20 @@ export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) 
 
       {/* Nav */}
       <div className="px-3 py-3 flex-1 min-h-0 overflow-y-auto">
+        {/* Top-level: Snapshot (manager view) */}
+        <nav className="space-y-0.5 mb-3">
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Snapshot</span>
+          </button>
+        </nav>
+
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 mb-2">
+          Inbox
+        </p>
         <nav className="space-y-0.5 mb-6">
           {navItems.map(({ id, label, icon: Icon }) => (
             <button
