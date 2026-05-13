@@ -17,7 +17,6 @@ import {
 type Range = '24h' | '7d' | '30d'
 
 export default function DashboardPage() {
-  const router = useRouter()
   const [range, setRange] = useState<Range>('7d')
 
   const totalChannelRevenue = useMemo(
@@ -369,7 +368,6 @@ function Sparkline({ data, positive }: { data: number[]; positive: boolean }) {
   }).join(' ')
 
   const stroke = positive ? '#10b981' : '#f43f5e'
-  const fill = positive ? 'url(#sparkGreen)' : 'url(#sparkRose)'
   const id = useMemo(() => Math.random().toString(36).slice(2), [])
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-9">
