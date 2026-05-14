@@ -1,5 +1,5 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Store, Bot, Bell, Users, CreditCard,
@@ -745,8 +745,20 @@ export default function SettingsPage() {
   const router = useRouter()
   const [activeSection, setActiveSection] = useState('stores')
 
-  // Stores state
-  const [stores, setStores] = useState<StoreRecord[]>(initialStores)
+  // Stores state — persisted to localStorage so they survive page navigation
+  const [stores, setStores] = useState<StoreRecord[]>(() => {
+    if (typeof window === 'undefined') return initialStores
+    try {
+      const saved = localStorage.getItem('cap_stores')
+      return saved ? JSON.parse(saved) : initialStores
+    } catch {
+      return initialStores
+    }
+  })
+
+  useEffect(() => {
+    localStorage.setItem('cap_stores', JSON.stringify(stores))
+  }, [stores])
   const [storesView, setStoresView] = useState<'list' | 'add' | 'platforms'>('list')
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
   const [connectingPlatform, setConnectingPlatform] = useState<PlatformId | null>(null)
