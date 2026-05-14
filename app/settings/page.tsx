@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 import {
   ArrowLeft, Store, Bot, Bell, Users, CreditCard,
   Check, X, Plus, Mail, Eye, ChevronDown, ChevronRight,
@@ -102,7 +103,14 @@ const messagingPlatforms: MessagingPlatform[] = [
     description: 'All regions · Popular with tech-savvy sellers',
     color: 'bg-sky-500',
     letter: 'T',
-    connectable: false,
+    connectable: true,
+    connectLabel: 'Connect Telegram bot',
+    steps: [
+      'Create a Telegram bot via @BotFather and copy the token',
+      'Paste the bot token below — we\'ll verify it and register the webhook automatically',
+      'Messages sent to your bot will appear in your inbox',
+    ],
+    accountPlaceholder: '@your_bot_username',
   },
   {
     id: 'zalo',
@@ -256,20 +264,43 @@ function RoleBadge({ role }: { role: Role }) {
 
 interface ConnectModalProps {
   platform: MessagingPlatform
+  storeId: string
   onClose: () => void
   onConnect: (platformId: PlatformId, account: string) => void
 }
 
-function ConnectModal({ platform, onClose, onConnect }: ConnectModalProps) {
-  const [step, setStep] = useState<'intro' | 'connecting' | 'done'>('intro')
+function ConnectModal({ platform, storeId, onClose, onConnect }: ConnectModalProps) {
+  const [step, setStep] = useState<'intro' | 'token' | 'connecting' | 'done' | 'error'>('intro')
+  const [botToken, setBotToken] = useState('')
+  const [connectedAccount, setConnectedAccount] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
+    if (!botToken.trim()) return
     setStep('connecting')
-    setTimeout(() => setStep('done'), 1800)
+    setErrorMsg('')
+    try {
+      const res = await fetch('/api/telegram/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ botToken: botToken.trim(), storeId }),
+      })
+      const data = await res.json() as { ok?: boolean; error?: string; accountLabel?: string }
+      if (!res.ok || !data.ok) {
+        setErrorMsg(data.error ?? 'Connection failed')
+        setStep('error')
+        return
+      }
+      setConnectedAccount(data.accountLabel ?? '@bot')
+      setStep('done')
+    } catch {
+      setErrorMsg('Network error — please try again')
+      setStep('error')
+    }
   }
 
   const handleFinish = () => {
-    onConnect(platform.id, platform.accountPlaceholder ?? 'Connected account')
+    onConnect(platform.id, connectedAccount)
     onClose()
   }
 
@@ -298,7 +329,7 @@ function ConnectModal({ platform, onClose, onConnect }: ConnectModalProps) {
         {step === 'intro' && (
           <>
             <div className="bg-gray-50 rounded-xl p-4 space-y-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">What happens next</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">How it works</p>
               {platform.steps?.map((s, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -308,16 +339,45 @@ function ConnectModal({ platform, onClose, onConnect }: ConnectModalProps) {
                 </div>
               ))}
             </div>
+            <div className="flex items-start gap-2 text-xs text-gray-500 bg-sky-50 rounded-lg p-3">
+              <AlertCircle className="w-4 h-4 text-sky-500 flex-shrink-0 mt-0.5" />
+              <p>
+                Open Telegram, search <span className="font-semibold">@BotFather</span>, send <span className="font-mono bg-white px-1 rounded">/newbot</span>, then copy the token it gives you.
+              </p>
+            </div>
+            <button
+              onClick={() => setStep('token')}
+              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+            >
+              I have my bot token →
+            </button>
+          </>
+        )}
+
+        {step === 'token' && (
+          <>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1.5 block">Bot token from @BotFather</label>
+              <input
+                type="text"
+                value={botToken}
+                onChange={e => setBotToken(e.target.value)}
+                placeholder="1234567890:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-gray-300"
+                autoFocus
+              />
+              <p className="text-xs text-gray-400 mt-1.5">Paste the full token — it starts with a number followed by a colon.</p>
+            </div>
             <div className="flex items-start gap-2 text-xs text-gray-400 bg-amber-50 rounded-lg p-3">
               <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-              <p>We only request read/write access to messages. We never post to your profile or access your contacts.</p>
+              <p>We store this token securely to send and receive messages on your behalf.</p>
             </div>
             <button
               onClick={handleConnect}
-              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+              disabled={!botToken.trim()}
+              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-semibold transition-colors"
             >
-              <ExternalLink className="w-4 h-4" />
-              {platform.connectLabel}
+              Connect bot
             </button>
           </>
         )}
@@ -325,8 +385,28 @@ function ConnectModal({ platform, onClose, onConnect }: ConnectModalProps) {
         {step === 'connecting' && (
           <div className="flex flex-col items-center py-8 gap-4">
             <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-            <p className="text-sm text-gray-500">Connecting to {platform.name}…</p>
+            <p className="text-sm text-gray-500">Verifying token and registering webhook…</p>
           </div>
+        )}
+
+        {step === 'error' && (
+          <>
+            <div className="flex flex-col items-center py-4 gap-3">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <X className="w-6 h-6 text-red-600" />
+              </div>
+              <div className="text-center">
+                <p className="font-semibold text-gray-900 text-sm">Connection failed</p>
+                <p className="text-xs text-gray-400 mt-1">{errorMsg}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setStep('token')}
+              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors"
+            >
+              Try again
+            </button>
+          </>
         )}
 
         {step === 'done' && (
@@ -337,11 +417,11 @@ function ConnectModal({ platform, onClose, onConnect }: ConnectModalProps) {
               </div>
               <div className="text-center">
                 <p className="font-semibold text-gray-900 text-sm">Connected!</p>
-                <p className="text-xs text-gray-400 mt-1">{platform.accountPlaceholder}</p>
+                <p className="text-xs text-gray-400 mt-1">{connectedAccount}</p>
               </div>
             </div>
             <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600">
-              Messages from <span className="font-medium">{platform.name}</span> will now flow into your inbox for this store. AI replies are active by default.
+              Messages sent to your Telegram bot will now flow into your inbox. Webhook is live.
             </div>
             <button
               onClick={handleFinish}
@@ -745,28 +825,57 @@ export default function SettingsPage() {
   const router = useRouter()
   const [activeSection, setActiveSection] = useState('stores')
 
-  // Stores state — persisted to localStorage so they survive page navigation
-  const [stores, setStores] = useState<StoreRecord[]>(() => {
-    if (typeof window === 'undefined') return initialStores
-    try {
-      const saved = localStorage.getItem('cap_stores')
-      return saved ? JSON.parse(saved) : initialStores
-    } catch {
-      return initialStores
-    }
-  })
+  // Stores state — fetched from Supabase
+  const [stores, setStores] = useState<StoreRecord[]>([])
+  const [storesLoading, setStoresLoading] = useState(true)
 
   useEffect(() => {
-    localStorage.setItem('cap_stores', JSON.stringify(stores))
-  }, [stores])
+    async function fetchStores() {
+      setStoresLoading(true)
+      const { data: storesData, error } = await supabase
+        .from('stores')
+        .select('*')
+        .order('created_at')
+
+      if (error || !storesData) { setStoresLoading(false); return }
+
+      const { data: platformsData } = await supabase
+        .from('store_platforms')
+        .select('*')
+
+      const records: StoreRecord[] = storesData.map(s => ({
+        id: s.id,
+        name: s.name,
+        country: s.country as Country,
+        language: s.language as Language,
+        currency: s.currency as Currency,
+        connectedPlatforms: emptyPlatforms(),
+      }))
+
+      if (platformsData) {
+        platformsData.forEach(p => {
+          const store = records.find(s => s.id === p.store_id)
+          if (store) store.connectedPlatforms[p.platform_id as PlatformId] = p.account_label
+        })
+      }
+
+      setStores(records)
+      setStoresLoading(false)
+    }
+    fetchStores()
+  }, [])
   const [storesView, setStoresView] = useState<'list' | 'add' | 'platforms'>('list')
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
   const [connectingPlatform, setConnectingPlatform] = useState<PlatformId | null>(null)
 
   const selectedStore = stores.find(s => s.id === selectedStoreId) ?? null
 
-  const handleConnect = (platformId: PlatformId, account: string) => {
+  const handleConnect = async (platformId: PlatformId, account: string) => {
     if (!selectedStoreId) return
+    await supabase.from('store_platforms').upsert(
+      { store_id: selectedStoreId, platform_id: platformId, account_label: account },
+      { onConflict: 'store_id,platform_id' }
+    )
     setStores(prev => prev.map(s =>
       s.id === selectedStoreId
         ? { ...s, connectedPlatforms: { ...s.connectedPlatforms, [platformId]: account } }
@@ -774,8 +883,12 @@ export default function SettingsPage() {
     ))
   }
 
-  const handleDisconnect = (platformId: PlatformId) => {
+  const handleDisconnect = async (platformId: PlatformId) => {
     if (!selectedStoreId) return
+    await supabase.from('store_platforms')
+      .delete()
+      .eq('store_id', selectedStoreId)
+      .eq('platform_id', platformId)
     setStores(prev => prev.map(s =>
       s.id === selectedStoreId
         ? { ...s, connectedPlatforms: { ...s.connectedPlatforms, [platformId]: null } }
@@ -783,12 +896,26 @@ export default function SettingsPage() {
     ))
   }
 
-  const handleAddStore = (store: StoreRecord) => {
-    setStores(prev => [...prev, store])
+  const handleAddStore = async (store: StoreRecord) => {
+    const { data, error } = await supabase
+      .from('stores')
+      .insert({ name: store.name, country: store.country, language: store.language, currency: store.currency })
+      .select()
+      .single()
+    if (error || !data) return
+    setStores(prev => [...prev, {
+      id: data.id,
+      name: data.name,
+      country: data.country as Country,
+      language: data.language as Language,
+      currency: data.currency as Currency,
+      connectedPlatforms: emptyPlatforms(),
+    }])
     setStoresView('list')
   }
 
-  const handleDeleteStore = (storeId: string) => {
+  const handleDeleteStore = async (storeId: string) => {
+    await supabase.from('stores').delete().eq('id', storeId)
     setStores(prev => prev.filter(s => s.id !== storeId))
   }
 
@@ -831,6 +958,7 @@ export default function SettingsPage() {
         return (
           <ConnectModal
             platform={p}
+            storeId={selectedStoreId!}
             onClose={() => setConnectingPlatform(null)}
             onConnect={handleConnect}
           />
@@ -902,7 +1030,11 @@ export default function SettingsPage() {
                 </button>
               </div>
 
-              {stores.length === 0 ? (
+              {storesLoading ? (
+                <div className="flex items-center justify-center h-48">
+                  <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
+                </div>
+              ) : stores.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-48 text-center border-2 border-dashed border-gray-200 rounded-2xl">
                   <Store className="w-8 h-8 text-gray-300 mb-3" />
                   <p className="text-sm font-medium text-gray-500">No stores yet</p>
