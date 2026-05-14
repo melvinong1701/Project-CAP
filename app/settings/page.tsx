@@ -6,7 +6,7 @@ import {
   ArrowLeft, Store, Bot, Bell, Users, CreditCard,
   Check, X, Plus, Mail, Eye, ChevronDown, ChevronRight,
   Crown, UserCog, MessageSquare, Trash2,
-  ExternalLink, AlertCircle, Loader2,
+  AlertCircle, Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -182,23 +182,6 @@ const emptyPlatforms = (): Record<PlatformId, string | null> => ({
   zalo: null,
 })
 
-const initialStores: StoreRecord[] = [
-  {
-    id: 'store-1',
-    name: 'TechGear SG',
-    country: 'SG',
-    language: 'en',
-    currency: 'SGD',
-    connectedPlatforms: {
-      telegram: 'Demo bot · @oakchat_demo',
-      whatsapp: null,
-      facebook_messenger: null,
-      instagram: null,
-      line: null,
-      zalo: null,
-    },
-  },
-]
 
 // ─── Team data ───────────────────────────────────────────────────────────────
 
