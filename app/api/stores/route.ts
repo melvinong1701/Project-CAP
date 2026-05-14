@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { DEMO_SUPABASE_ANON_KEY, DEMO_SUPABASE_URL } from '@/lib/supabaseConfig'
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -18,12 +19,8 @@ interface StorePlatformRow {
 }
 
 function getSupabase() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Supabase environment variables are not configured')
-  }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || DEMO_SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEMO_SUPABASE_ANON_KEY
 
   return createClient(supabaseUrl, supabaseKey)
 }
