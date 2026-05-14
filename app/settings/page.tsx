@@ -1397,7 +1397,7 @@ export default function SettingsPage() {
               <div className="mb-8">
                 <h1 className="text-lg font-semibold text-gray-900">AI settings</h1>
                 <p className="text-sm text-gray-500 mt-1">
-                  Configure how OakChat replies, drafts, and hands off conversations across your stores.
+                  Configure how the AI replies, drafts, and hands off conversations across your stores.
                 </p>
               </div>
 
