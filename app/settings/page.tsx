@@ -1486,6 +1486,11 @@ export default function SettingsPage() {
                               />
                             </div>
                           </div>
+                          {aiSettings.confidenceThresholds.autoSend <= aiSettings.confidenceThresholds.draft && (
+                            <p className="text-xs text-amber-600 mt-2">
+                              Auto-send threshold should be higher than the draft threshold.
+                            </p>
+                          )}
                           <p className="text-xs text-gray-400 mt-3">
                             Conversations below the draft threshold are escalated to a human.
                           </p>
