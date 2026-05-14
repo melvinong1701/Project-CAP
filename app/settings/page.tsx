@@ -173,6 +173,20 @@ interface StoreRecord {
   connectedPlatforms: Record<PlatformId, string | null>
 }
 
+interface ApiStoreRow {
+  id: string
+  name: string
+  country: string
+  language: string
+  currency: string
+}
+
+interface ApiStorePlatformRow {
+  store_id: string
+  platform_id: string
+  account_label: string | null
+}
+
 const emptyPlatforms = (): Record<PlatformId, string | null> => ({
   telegram: null,
   whatsapp: null,
@@ -545,7 +559,7 @@ function StoreCard({ store, onClick, onDelete }: { store: StoreRecord; onClick: 
 
 interface AddStoreFormProps {
   onBack: () => void
-  onSave: (store: StoreRecord) => void
+  onSave: (store: StoreRecord) => Promise<boolean>
 }
 
 function AddStoreForm({ onBack, onSave }: AddStoreFormProps) {
@@ -553,6 +567,8 @@ function AddStoreForm({ onBack, onSave }: AddStoreFormProps) {
   const [country, setCountry] = useState<Country>('SG')
   const [language, setLanguage] = useState<Language>('en')
   const [currency, setCurrency] = useState<Currency>('SGD')
+  const [isSaving, setIsSaving] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
 
   const handleCountryChange = (c: Country) => {
     setCountry(c)
@@ -560,9 +576,11 @@ function AddStoreForm({ onBack, onSave }: AddStoreFormProps) {
     setCurrency(countryDefaults[c].currency)
   }
 
-  const handleSave = () => {
-    if (!name.trim()) return
-    onSave({
+  const handleSave = async () => {
+    if (!name.trim() || isSaving) return
+    setIsSaving(true)
+    setErrorMsg('')
+    const saved = await onSave({
       id: `store-${Date.now()}`,
       name: name.trim(),
       country,
@@ -570,6 +588,10 @@ function AddStoreForm({ onBack, onSave }: AddStoreFormProps) {
       currency,
       connectedPlatforms: emptyPlatforms(),
     })
+    if (!saved) {
+      setErrorMsg('Failed to save store. Please try again.')
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -639,19 +661,28 @@ function AddStoreForm({ onBack, onSave }: AddStoreFormProps) {
           </div>
         </div>
 
+        {errorMsg && (
+          <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 rounded-lg p-3">
+            <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+            <p>{errorMsg}</p>
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
           <button
             onClick={onBack}
+            disabled={isSaving}
             className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            disabled={!name.trim()}
-            className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-semibold transition-colors"
+            disabled={!name.trim() || isSaving}
+            className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
           >
-            Add store
+            {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+            {isSaving ? 'Saving...' : 'Add store'}
           </button>
         </div>
       </div>
@@ -815,17 +846,16 @@ export default function SettingsPage() {
   useEffect(() => {
     async function fetchStores() {
       setStoresLoading(true)
-      const { data: storesData, error } = await supabase
-        .from('stores')
-        .select('*')
-        .order('created_at')
+      const res = await fetch('/api/stores')
+      if (!res.ok) {
+        setStoresLoading(false)
+        return
+      }
 
-      if (error || !storesData) { setStoresLoading(false); return }
-
-      const { data: platformsData } = await supabase
-        .from('store_platforms')
-        .select('*')
-
+      const { stores: storesData, platforms: platformsData } = await res.json() as {
+        stores: ApiStoreRow[]
+        platforms: ApiStorePlatformRow[]
+      }
       const records: StoreRecord[] = storesData.map(s => ({
         id: s.id,
         name: s.name,
@@ -835,12 +865,10 @@ export default function SettingsPage() {
         connectedPlatforms: emptyPlatforms(),
       }))
 
-      if (platformsData) {
-        platformsData.forEach(p => {
-          const store = records.find(s => s.id === p.store_id)
-          if (store) store.connectedPlatforms[p.platform_id as PlatformId] = p.account_label
-        })
-      }
+      platformsData.forEach(p => {
+        const store = records.find(s => s.id === p.store_id)
+        if (store) store.connectedPlatforms[p.platform_id as PlatformId] = p.account_label
+      })
 
       setStores(records)
       setStoresLoading(false)
@@ -880,25 +908,38 @@ export default function SettingsPage() {
   }
 
   const handleAddStore = async (store: StoreRecord) => {
-    const { data, error } = await supabase
-      .from('stores')
-      .insert({ name: store.name, country: store.country, language: store.language, currency: store.currency })
-      .select()
-      .single()
-    if (error || !data) return
-    setStores(prev => [...prev, {
-      id: data.id,
-      name: data.name,
-      country: data.country as Country,
-      language: data.language as Language,
-      currency: data.currency as Currency,
-      connectedPlatforms: emptyPlatforms(),
-    }])
-    setStoresView('list')
+    try {
+      const res = await fetch('/api/stores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: store.name,
+          country: store.country,
+          language: store.language,
+          currency: store.currency,
+        }),
+      })
+
+      if (!res.ok) return false
+
+      const { store: savedStore } = await res.json() as { store: ApiStoreRow }
+      setStores(prev => [...prev, {
+        id: savedStore.id,
+        name: savedStore.name,
+        country: savedStore.country as Country,
+        language: savedStore.language as Language,
+        currency: savedStore.currency as Currency,
+        connectedPlatforms: emptyPlatforms(),
+      }])
+      setStoresView('list')
+      return true
+    } catch {
+      return false
+    }
   }
 
   const handleDeleteStore = async (storeId: string) => {
-    await supabase.from('stores').delete().eq('id', storeId)
+    await fetch(`/api/stores?storeId=${encodeURIComponent(storeId)}`, { method: 'DELETE' })
     setStores(prev => prev.filter(s => s.id !== storeId))
   }
 
