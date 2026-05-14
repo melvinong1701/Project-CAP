@@ -9,19 +9,24 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ChannelBadge } from '@/components/ChannelBadge'
-import {
-  kpis, revenueSeries, channelSplit, aiBreakdown, topTopics,
-  bestSellers, inventoryAlerts, storeLeaderboard, agentRows, customerSignals,
-} from '@/lib/dashboardData'
+import { getDashboardData } from '@/lib/dashboardData'
 
 type Range = '24h' | '7d' | '30d'
+type DashData = ReturnType<typeof getDashboardData>
 
 export default function DashboardPage() {
   const [range, setRange] = useState<Range>('7d')
 
+  const data = useMemo(() => getDashboardData(range), [range])
+  const {
+    kpis, revenueSeries, revenueMeta, channelSplit, aiBreakdown,
+    topTopics, bestSellers, inventoryAlerts, storeLeaderboard,
+    agentRows, customerSignals,
+  } = data
+
   const totalChannelRevenue = useMemo(
     () => channelSplit.reduce((s, c) => s + c.revenue, 0),
-    []
+    [channelSplit]
   )
 
   const totalAiReplies = aiBreakdown.autoSent + aiBreakdown.drafted + aiBreakdown.escalated
@@ -60,14 +65,14 @@ export default function DashboardPage() {
             <Card className="lg:col-span-2">
               <CardHeader
                 title="Revenue trend"
-                subtitle="Last 14 days · SGD"
+                subtitle={revenueMeta.subtitle}
                 icon={<TrendingUp className="w-4 h-4 text-indigo-600" />}
               />
               <RevenueAreaChart data={revenueSeries} />
               <div className="grid grid-cols-3 gap-4 pt-4 mt-4 border-t border-gray-100">
-                <Stat label="Avg daily revenue" value="S$5,841" />
-                <Stat label="Best day" value="S$11,520" sub="13 May" />
-                <Stat label="Avg order value" value="S$156.78" />
+                {revenueMeta.stats.map(s => (
+                  <Stat key={s.label} label={s.label} value={s.value} sub={s.sub} />
+                ))}
               </div>
             </Card>
 
@@ -86,7 +91,7 @@ export default function DashboardPage() {
             <Card className="lg:col-span-2">
               <CardHeader
                 title="AI performance"
-                subtitle={`${totalAiReplies.toLocaleString()} AI-assisted replies this week`}
+                subtitle={`${totalAiReplies.toLocaleString()} AI-assisted replies ${range === '24h' ? 'today' : range === '7d' ? 'this week' : 'this month'}`}
                 icon={<Sparkles className="w-4 h-4 text-indigo-600" />}
               />
               <AiBreakdownBar data={aiBreakdown} />
@@ -172,7 +177,7 @@ export default function DashboardPage() {
                 subtitle="Mood and mix this week"
                 icon={<Bot className="w-4 h-4 text-indigo-600" />}
               />
-              <CustomerSignalsBlock />
+              <CustomerSignalsBlock data={customerSignals} range={range} />
             </Card>
           </section>
 
@@ -333,7 +338,7 @@ function Stat({
    KPI card with sparkline
    ──────────────────────────────────────────────────────────────────────── */
 
-function KpiCard({ kpi }: { kpi: typeof kpis[number] }) {
+function KpiCard({ kpi }: { kpi: DashData['kpis'][number] }) {
   // For response time, negative delta is good (faster).
   const isResponseTime = kpi.id === 'response'
   const positive = isResponseTime ? kpi.deltaPct < 0 : kpi.deltaPct > 0
@@ -401,7 +406,7 @@ function Sparkline({ data, positive }: { data: number[]; positive: boolean }) {
    Revenue area chart
    ──────────────────────────────────────────────────────────────────────── */
 
-function RevenueAreaChart({ data }: { data: typeof revenueSeries }) {
+function RevenueAreaChart({ data }: { data: DashData['revenueSeries'] }) {
   const w = 720, h = 200, pad = { l: 40, r: 12, t: 12, b: 24 }
   const innerW = w - pad.l - pad.r
   const innerH = h - pad.t - pad.b
@@ -478,7 +483,7 @@ function RevenueAreaChart({ data }: { data: typeof revenueSeries }) {
    Channel mix
    ──────────────────────────────────────────────────────────────────────── */
 
-function ChannelMix({ data, total }: { data: typeof channelSplit; total: number }) {
+function ChannelMix({ data, total }: { data: DashData['channelSplit']; total: number }) {
   return (
     <div className="space-y-3">
       {/* Stacked bar */}
@@ -515,7 +520,7 @@ function ChannelMix({ data, total }: { data: typeof channelSplit; total: number 
    AI breakdown bar
    ──────────────────────────────────────────────────────────────────────── */
 
-function AiBreakdownBar({ data }: { data: typeof aiBreakdown }) {
+function AiBreakdownBar({ data }: { data: DashData['aiBreakdown'] }) {
   const total = data.autoSent + data.drafted + data.escalated
   const segs = [
     { id: 'auto', label: 'Auto-sent', value: data.autoSent, color: 'bg-emerald-500' },
@@ -547,7 +552,7 @@ function AiBreakdownBar({ data }: { data: typeof aiBreakdown }) {
    Top topics
    ──────────────────────────────────────────────────────────────────────── */
 
-function TopicList({ topics }: { topics: typeof topTopics }) {
+function TopicList({ topics }: { topics: DashData['topTopics'] }) {
   const max = Math.max(...topics.map(t => t.count))
   return (
     <ul className="space-y-2.5">
@@ -573,7 +578,7 @@ function TopicList({ topics }: { topics: typeof topTopics }) {
    Best sellers table
    ──────────────────────────────────────────────────────────────────────── */
 
-function BestSellersTable({ rows }: { rows: typeof bestSellers }) {
+function BestSellersTable({ rows }: { rows: DashData['bestSellers'] }) {
   return (
     <table className="w-full text-sm">
       <thead>
@@ -621,7 +626,7 @@ function BestSellersTable({ rows }: { rows: typeof bestSellers }) {
    Inventory alerts
    ──────────────────────────────────────────────────────────────────────── */
 
-function InventoryAlertList({ alerts }: { alerts: typeof inventoryAlerts }) {
+function InventoryAlertList({ alerts }: { alerts: DashData['inventoryAlerts'] }) {
   return (
     <ul className="space-y-2.5">
       {alerts.map(a => (
@@ -664,7 +669,7 @@ function InventoryAlertList({ alerts }: { alerts: typeof inventoryAlerts }) {
    Store leaderboard table
    ──────────────────────────────────────────────────────────────────────── */
 
-function StoreTable({ rows }: { rows: typeof storeLeaderboard }) {
+function StoreTable({ rows }: { rows: DashData['storeLeaderboard'] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -725,7 +730,7 @@ function ProgressPill({ value }: { value: number }) {
    Agent table
    ──────────────────────────────────────────────────────────────────────── */
 
-function AgentTable({ rows }: { rows: typeof agentRows }) {
+function AgentTable({ rows }: { rows: DashData['agentRows'] }) {
   return (
     <table className="w-full text-sm">
       <thead>
@@ -765,17 +770,18 @@ function AgentTable({ rows }: { rows: typeof agentRows }) {
    Customer signals
    ──────────────────────────────────────────────────────────────────────── */
 
-function CustomerSignalsBlock() {
-  const cs = customerSignals
+function CustomerSignalsBlock({ data, range }: { data: DashData['customerSignals']; range: Range }) {
+  const cs = data
   const totalCust = cs.newCustomers + cs.returningCustomers
   const sent = cs.sentiment
+  const periodLabel = range === '24h' ? 'today' : range === '7d' ? 'this week' : 'this month'
   return (
     <div className="space-y-5">
       {/* New vs returning */}
       <div>
         <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
           <span>Customer mix</span>
-          <span>{totalCust} this week</span>
+          <span>{totalCust} {periodLabel}</span>
         </div>
         <div className="flex h-2 w-full rounded-full overflow-hidden bg-gray-100">
           <div className="bg-indigo-500" style={{ width: `${(cs.newCustomers / totalCust) * 100}%` }} />
@@ -821,7 +827,7 @@ function CustomerSignalsBlock() {
       {/* Sentiment 14d sparkline */}
       <div>
         <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-          <span>14-day positive sentiment trend</span>
+          <span>Positive sentiment trend</span>
         </div>
         <Sparkline data={cs.sentimentTrend} positive />
       </div>
