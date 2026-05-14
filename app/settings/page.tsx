@@ -20,6 +20,133 @@ const navItems = [
   { id: 'billing', label: 'Plan & billing', icon: CreditCard },
 ]
 
+// ─── AI settings data ────────────────────────────────────────────────────────
+
+type ConfidencePreset = 'conservative' | 'balanced' | 'aggressive'
+type ReplyTone = 'professional' | 'friendly' | 'casual'
+type LanguageBehaviour = 'match_buyer' | 'store_primary' | 'english'
+
+interface AiSettings {
+  autoReplyEnabled: boolean
+  confidencePreset: ConfidencePreset
+  confidenceThresholds: { autoSend: number; draft: number }
+  replyTone: ReplyTone
+  languageBehaviour: LanguageBehaviour
+  replyDelayEnabled: boolean
+  replyDelaySeconds: number
+  brandVoice: string
+  whatWeSell: string
+  returnPolicy: string
+  shippingPolicy: string
+  commonFaqs: string
+  alwaysEscalateIf: string
+  neverDiscuss: string
+  signature: string
+  languageBlocklist: string
+}
+
+const aiSettingsStorageKey = 'cap_ai_settings'
+
+const confidencePresets: Record<ConfidencePreset, { label: string; thresholds: AiSettings['confidenceThresholds'] }> = {
+  conservative: { label: 'Conservative', thresholds: { autoSend: 90, draft: 70 } },
+  balanced: { label: 'Balanced', thresholds: { autoSend: 80, draft: 60 } },
+  aggressive: { label: 'Aggressive', thresholds: { autoSend: 70, draft: 50 } },
+}
+
+const replyToneOptions: { value: ReplyTone; label: string }[] = [
+  { value: 'professional', label: 'Professional' },
+  { value: 'friendly', label: 'Friendly' },
+  { value: 'casual', label: 'Casual' },
+]
+
+const languageBehaviourOptions: { value: LanguageBehaviour; label: string; description: string }[] = [
+  {
+    value: 'match_buyer',
+    label: 'Match buyer\'s language',
+    description: 'AI detects and replies in the language the buyer used.',
+  },
+  {
+    value: 'store_primary',
+    label: 'Store\'s primary language',
+    description: 'Always reply in the language set on each store.',
+  },
+  {
+    value: 'english',
+    label: 'Always English',
+    description: 'Reply in English regardless of what the buyer wrote.',
+  },
+]
+
+const defaultAiSettings: AiSettings = {
+  autoReplyEnabled: true,
+  confidencePreset: 'balanced',
+  confidenceThresholds: { autoSend: 80, draft: 60 },
+  replyTone: 'friendly',
+  languageBehaviour: 'match_buyer',
+  replyDelayEnabled: false,
+  replyDelaySeconds: 10,
+  brandVoice: '',
+  whatWeSell: '',
+  returnPolicy: '',
+  shippingPolicy: '',
+  commonFaqs: '',
+  alwaysEscalateIf: '',
+  neverDiscuss: '',
+  signature: '',
+  languageBlocklist: '',
+}
+
+const clampNumber = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
+const stringValue = (value: unknown, fallback: string) =>
+  typeof value === 'string' ? value : fallback
+
+const booleanValue = (value: unknown, fallback: boolean) =>
+  typeof value === 'boolean' ? value : fallback
+
+const numberValue = (value: unknown, fallback: number, min: number, max: number) =>
+  typeof value === 'number' && Number.isFinite(value) ? clampNumber(value, min, max) : fallback
+
+function parseStoredAiSettings(value: unknown): AiSettings {
+  if (!isRecord(value)) return defaultAiSettings
+
+  const thresholds = isRecord(value.confidenceThresholds) ? value.confidenceThresholds : {}
+  const confidencePreset = ['conservative', 'balanced', 'aggressive'].includes(String(value.confidencePreset))
+    ? value.confidencePreset as ConfidencePreset
+    : defaultAiSettings.confidencePreset
+  const replyTone = ['professional', 'friendly', 'casual'].includes(String(value.replyTone))
+    ? value.replyTone as ReplyTone
+    : defaultAiSettings.replyTone
+  const languageBehaviour = ['match_buyer', 'store_primary', 'english'].includes(String(value.languageBehaviour))
+    ? value.languageBehaviour as LanguageBehaviour
+    : defaultAiSettings.languageBehaviour
+
+  return {
+    autoReplyEnabled: booleanValue(value.autoReplyEnabled, defaultAiSettings.autoReplyEnabled),
+    confidencePreset,
+    confidenceThresholds: {
+      autoSend: numberValue(thresholds.autoSend, defaultAiSettings.confidenceThresholds.autoSend, 0, 100),
+      draft: numberValue(thresholds.draft, defaultAiSettings.confidenceThresholds.draft, 0, 100),
+    },
+    replyTone,
+    languageBehaviour,
+    replyDelayEnabled: booleanValue(value.replyDelayEnabled, defaultAiSettings.replyDelayEnabled),
+    replyDelaySeconds: numberValue(value.replyDelaySeconds, defaultAiSettings.replyDelaySeconds, 5, 60),
+    brandVoice: stringValue(value.brandVoice, defaultAiSettings.brandVoice),
+    whatWeSell: stringValue(value.whatWeSell, defaultAiSettings.whatWeSell),
+    returnPolicy: stringValue(value.returnPolicy, defaultAiSettings.returnPolicy),
+    shippingPolicy: stringValue(value.shippingPolicy, defaultAiSettings.shippingPolicy),
+    commonFaqs: stringValue(value.commonFaqs, defaultAiSettings.commonFaqs),
+    alwaysEscalateIf: stringValue(value.alwaysEscalateIf, defaultAiSettings.alwaysEscalateIf),
+    neverDiscuss: stringValue(value.neverDiscuss, defaultAiSettings.neverDiscuss),
+    signature: stringValue(value.signature, defaultAiSettings.signature),
+    languageBlocklist: stringValue(value.languageBlocklist, defaultAiSettings.languageBlocklist),
+  }
+}
+
 // ─── Platform data ───────────────────────────────────────────────────────────
 
 const marketplaces = [
@@ -254,6 +381,58 @@ function RoleBadge({ role }: { role: Role }) {
       <Icon className="w-3 h-3" />
       {cfg.label}
     </span>
+  )
+}
+
+function ToggleSwitch({ enabled, onChange, label }: { enabled: boolean; onChange: (enabled: boolean) => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!enabled)}
+      aria-pressed={enabled}
+      aria-label={label}
+      className={cn(
+        'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2',
+        enabled ? 'bg-indigo-600' : 'bg-gray-200'
+      )}
+    >
+      <span
+        className={cn(
+          'inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
+          enabled ? 'translate-x-5' : 'translate-x-0.5'
+        )}
+      />
+    </button>
+  )
+}
+
+function AiTextArea({
+  id,
+  label,
+  hint,
+  value,
+  rows,
+  onChange,
+}: {
+  id: string
+  label: string
+  hint: string
+  value: string
+  rows: number
+  onChange: (value: string) => void
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="text-sm font-medium text-gray-900 mb-1 block">{label}</label>
+      <p className="text-xs text-gray-400 mb-2">{hint}</p>
+      <textarea
+        id={id}
+        value={value}
+        rows={rows}
+        onChange={e => onChange(e.target.value)}
+        className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none placeholder:text-gray-300"
+      />
+    </div>
   )
 }
 
@@ -953,6 +1132,29 @@ export default function SettingsPage() {
   const [showInvite, setShowInvite] = useState(false)
   const [showPermissions, setShowPermissions] = useState(false)
 
+  // AI settings state — persisted locally until the Supabase table exists.
+  const [aiSettings, setAiSettings] = useState<AiSettings>(defaultAiSettings)
+  const [showAdvancedConfidence, setShowAdvancedConfidence] = useState(false)
+  const [aiSaved, setAiSaved] = useState(false)
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(aiSettingsStorageKey)
+    if (!stored) return
+
+    try {
+      setAiSettings(parseStoredAiSettings(JSON.parse(stored) as unknown))
+    } catch {
+      setAiSettings(defaultAiSettings)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!aiSaved) return undefined
+
+    const timeoutId = window.setTimeout(() => setAiSaved(false), 2000)
+    return () => window.clearTimeout(timeoutId)
+  }, [aiSaved])
+
   const handleInvite = (email: string, role: Role) => {
     const name = email.split('@')[0]
     setTeam(prev => [...prev, {
@@ -971,6 +1173,38 @@ export default function SettingsPage() {
 
   const handleRemove = (memberId: string) => {
     setTeam(prev => prev.filter(m => m.id !== memberId))
+  }
+
+  const updateAiSettings = <Key extends keyof AiSettings>(key: Key, value: AiSettings[Key]) => {
+    setAiSettings(prev => ({ ...prev, [key]: value }))
+  }
+
+  const handleConfidencePresetChange = (preset: ConfidencePreset) => {
+    setAiSettings(prev => ({
+      ...prev,
+      confidencePreset: preset,
+      confidenceThresholds: confidencePresets[preset].thresholds,
+    }))
+  }
+
+  const handleConfidenceThresholdChange = (field: keyof AiSettings['confidenceThresholds'], value: number) => {
+    const nextValue = Number.isFinite(value) ? clampNumber(value, 0, 100) : 0
+    setAiSettings(prev => ({
+      ...prev,
+      confidenceThresholds: {
+        ...prev.confidenceThresholds,
+        [field]: nextValue,
+      },
+    }))
+  }
+
+  const handleReplyDelayChange = (value: number) => {
+    updateAiSettings('replyDelaySeconds', Number.isFinite(value) ? clampNumber(value, 5, 60) : 5)
+  }
+
+  const handleSaveAiSettings = () => {
+    window.localStorage.setItem(aiSettingsStorageKey, JSON.stringify(aiSettings))
+    setAiSaved(true)
   }
 
   return (
@@ -1157,6 +1391,296 @@ export default function SettingsPage() {
             </>
           )}
 
+          {/* ── AI Settings ───────────────────────────────── */}
+          {activeSection === 'ai' && (
+            <>
+              <div className="mb-8">
+                <h1 className="text-lg font-semibold text-gray-900">AI settings</h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  Configure how OakChat replies, drafts, and hands off conversations across your stores.
+                </p>
+              </div>
+
+              <div className="space-y-6">
+                <div className="bg-white rounded-2xl border border-gray-100 p-6">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">
+                    Behaviour controls
+                  </p>
+
+                  <div className="space-y-6">
+                    <div className="flex items-start justify-between gap-6">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">Auto-reply</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          AI sends high-confidence replies automatically. Medium confidence creates a draft for review.
+                        </p>
+                      </div>
+                      <ToggleSwitch
+                        enabled={aiSettings.autoReplyEnabled}
+                        label="Toggle auto-reply"
+                        onChange={enabled => updateAiSettings('autoReplyEnabled', enabled)}
+                      />
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Confidence threshold</p>
+                      <p className="text-xs text-gray-400 mt-1 mb-3">
+                        Controls when AI acts automatically vs. flags for human review.
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(Object.keys(confidencePresets) as ConfidencePreset[]).map(preset => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => handleConfidencePresetChange(preset)}
+                            className={cn(
+                              'rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-colors',
+                              aiSettings.confidencePreset === preset
+                                ? 'bg-indigo-600 text-white'
+                                : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                            )}
+                          >
+                            {confidencePresets[preset].label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedConfidence(open => !open)}
+                        className="mt-4 flex items-center gap-2 text-xs font-semibold text-gray-500 hover:text-gray-800 transition-colors"
+                      >
+                        <ChevronDown className={cn('w-4 h-4 transition-transform', showAdvancedConfidence && 'rotate-180')} />
+                        Advanced
+                      </button>
+
+                      {showAdvancedConfidence && (
+                        <div className="mt-3 rounded-xl bg-gray-50 p-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label htmlFor="ai-auto-send-threshold" className="text-xs font-medium text-gray-500 mb-1.5 block">
+                                Auto-send above (%)
+                              </label>
+                              <input
+                                id="ai-auto-send-threshold"
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={aiSettings.confidenceThresholds.autoSend}
+                                onChange={e => handleConfidenceThresholdChange('autoSend', e.currentTarget.valueAsNumber)}
+                                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label htmlFor="ai-draft-threshold" className="text-xs font-medium text-gray-500 mb-1.5 block">
+                                Draft for review above (%)
+                              </label>
+                              <input
+                                id="ai-draft-threshold"
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={aiSettings.confidenceThresholds.draft}
+                                onChange={e => handleConfidenceThresholdChange('draft', e.currentTarget.valueAsNumber)}
+                                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                              />
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-3">
+                            Conversations below the draft threshold are escalated to a human.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 mb-3">Reply tone</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {replyToneOptions.map(option => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => updateAiSettings('replyTone', option.value)}
+                            className={cn(
+                              'rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-colors',
+                              aiSettings.replyTone === option.value
+                                ? 'bg-indigo-600 text-white'
+                                : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 mb-3">Response language</p>
+                      <div className="space-y-2">
+                        {languageBehaviourOptions.map(option => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => updateAiSettings('languageBehaviour', option.value)}
+                            className={cn(
+                              'w-full flex items-start gap-3 px-3.5 py-3 rounded-xl border text-left transition-all',
+                              aiSettings.languageBehaviour === option.value
+                                ? 'border-indigo-300 bg-indigo-50'
+                                : 'border-gray-100 hover:border-gray-200'
+                            )}
+                          >
+                            <span className={cn(
+                              'mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border',
+                              aiSettings.languageBehaviour === option.value ? 'border-indigo-600' : 'border-gray-300'
+                            )}>
+                              {aiSettings.languageBehaviour === option.value && (
+                                <span className="h-2 w-2 rounded-full bg-indigo-600" />
+                              )}
+                            </span>
+                            <span className="flex-1">
+                              <span className="block text-sm font-medium text-gray-900">{option.label}</span>
+                              <span className="block text-xs text-gray-400 mt-0.5">{option.description}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-start justify-between gap-6">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">Reply delay</p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            Adds a short pause before sending so replies don&apos;t feel instant.
+                          </p>
+                        </div>
+                        <ToggleSwitch
+                          enabled={aiSettings.replyDelayEnabled}
+                          label="Toggle reply delay"
+                          onChange={enabled => updateAiSettings('replyDelayEnabled', enabled)}
+                        />
+                      </div>
+
+                      {aiSettings.replyDelayEnabled && (
+                        <div className="mt-3 max-w-xs">
+                          <label htmlFor="ai-reply-delay-seconds" className="text-xs font-medium text-gray-500 mb-1.5 block">Delay (seconds)</label>
+                          <input
+                            id="ai-reply-delay-seconds"
+                            type="number"
+                            min={5}
+                            max={60}
+                            value={aiSettings.replyDelaySeconds}
+                            onChange={e => handleReplyDelayChange(e.currentTarget.valueAsNumber)}
+                            className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-gray-100 p-6">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">
+                    Business context
+                  </p>
+                  <div className="space-y-5">
+                    <AiTextArea
+                      id="ai-brand-voice"
+                      label="Brand voice"
+                      hint={'How do you want to sound? E.g. "Warm but professional. Never use slang. Always end with a call to action."'}
+                      value={aiSettings.brandVoice}
+                      rows={3}
+                      onChange={value => updateAiSettings('brandVoice', value)}
+                    />
+                    <AiTextArea
+                      id="ai-what-we-sell"
+                      label="What we sell"
+                      hint="Describe your product range so the AI knows what you carry."
+                      value={aiSettings.whatWeSell}
+                      rows={3}
+                      onChange={value => updateAiSettings('whatWeSell', value)}
+                    />
+                    <AiTextArea
+                      id="ai-return-policy"
+                      label="Return & refund policy"
+                      hint="Paste your standard policy. Per-store overrides coming later."
+                      value={aiSettings.returnPolicy}
+                      rows={3}
+                      onChange={value => updateAiSettings('returnPolicy', value)}
+                    />
+                    <AiTextArea
+                      id="ai-shipping-policy"
+                      label="Shipping policy"
+                      hint="Your standard shipping terms."
+                      value={aiSettings.shippingPolicy}
+                      rows={3}
+                      onChange={value => updateAiSettings('shippingPolicy', value)}
+                    />
+                    <AiTextArea
+                      id="ai-common-faqs"
+                      label="Common FAQs"
+                      hint="Questions and answers you get most often. The AI will use these to respond."
+                      value={aiSettings.commonFaqs}
+                      rows={5}
+                      onChange={value => updateAiSettings('commonFaqs', value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-gray-100 p-6">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">
+                    Operating rules
+                  </p>
+                  <div className="space-y-5">
+                    <AiTextArea
+                      id="ai-always-escalate-if"
+                      label="Always escalate if"
+                      hint={'Describe situations where the AI must hand off to a human. E.g. "Refund dispute", "Order value over SGD 500", "Message contains \'lawyer\'".'}
+                      value={aiSettings.alwaysEscalateIf}
+                      rows={3}
+                      onChange={value => updateAiSettings('alwaysEscalateIf', value)}
+                    />
+                    <AiTextArea
+                      id="ai-never-discuss"
+                      label="Never discuss"
+                      hint="Topics the AI should refuse and pass to a human agent."
+                      value={aiSettings.neverDiscuss}
+                      rows={3}
+                      onChange={value => updateAiSettings('neverDiscuss', value)}
+                    />
+                    <AiTextArea
+                      id="ai-signature"
+                      label="Sign-off"
+                      hint={'Optional text appended to every AI reply. E.g. "- The TechGear Team"'}
+                      value={aiSettings.signature}
+                      rows={3}
+                      onChange={value => updateAiSettings('signature', value)}
+                    />
+                    <AiTextArea
+                      id="ai-language-blocklist"
+                      label="Language blocklist"
+                      hint="Words or phrases the AI must never include in a reply. Comma-separated."
+                      value={aiSettings.languageBlocklist}
+                      rows={3}
+                      onChange={value => updateAiSettings('languageBlocklist', value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSaveAiSettings}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl py-2.5 px-5 transition-colors inline-flex items-center gap-2"
+                  >
+                    {aiSaved && <Check className="w-4 h-4" />}
+                    {aiSaved ? 'Settings saved' : 'Save settings'}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* ── Team & Agents ─────────────────────────────── */}
           {activeSection === 'team' && (
             <>
@@ -1300,7 +1824,7 @@ export default function SettingsPage() {
           )}
 
           {/* ── Other sections (placeholder) ──────────────── */}
-          {activeSection !== 'stores' && activeSection !== 'team' && (
+          {activeSection !== 'stores' && activeSection !== 'team' && activeSection !== 'ai' && (
             <div className="flex flex-col items-center justify-center h-64 text-center">
               <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
                 {(() => {
