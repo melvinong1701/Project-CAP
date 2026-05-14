@@ -10,8 +10,6 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
-
 // ─── Nav ────────────────────────────────────────────────────────────────────
 
 const navItems = [
@@ -173,6 +171,20 @@ interface StoreRecord {
   language: Language
   currency: Currency
   connectedPlatforms: Record<PlatformId, string | null>
+}
+
+interface ApiStoreRow {
+  id: string
+  name: string
+  country: string
+  language: string
+  currency: string
+}
+
+interface ApiStorePlatformRow {
+  store_id: string
+  platform_id: string
+  account_label: string | null
 }
 
 const emptyPlatforms = (): Record<PlatformId, string | null> => ({
@@ -834,18 +846,16 @@ export default function SettingsPage() {
   useEffect(() => {
     async function fetchStores() {
       setStoresLoading(true)
-      const { data: storesData, error } = await supabase
-        .from('stores')
-        .select('*')
-        .eq('organization_id', ORG_ID)
-        .order('created_at')
+      const res = await fetch('/api/stores')
+      if (!res.ok) {
+        setStoresLoading(false)
+        return
+      }
 
-      if (error || !storesData) { setStoresLoading(false); return }
-
-      const { data: platformsData } = await supabase
-        .from('store_platforms')
-        .select('*')
-
+      const { stores: storesData, platforms: platformsData } = await res.json() as {
+        stores: ApiStoreRow[]
+        platforms: ApiStorePlatformRow[]
+      }
       const records: StoreRecord[] = storesData.map(s => ({
         id: s.id,
         name: s.name,
@@ -855,12 +865,10 @@ export default function SettingsPage() {
         connectedPlatforms: emptyPlatforms(),
       }))
 
-      if (platformsData) {
-        platformsData.forEach(p => {
-          const store = records.find(s => s.id === p.store_id)
-          if (store) store.connectedPlatforms[p.platform_id as PlatformId] = p.account_label
-        })
-      }
+      platformsData.forEach(p => {
+        const store = records.find(s => s.id === p.store_id)
+        if (store) store.connectedPlatforms[p.platform_id as PlatformId] = p.account_label
+      })
 
       setStores(records)
       setStoresLoading(false)
@@ -900,32 +908,38 @@ export default function SettingsPage() {
   }
 
   const handleAddStore = async (store: StoreRecord) => {
-    const { data, error } = await supabase
-      .from('stores')
-      .insert({
-        organization_id: ORG_ID,
-        name: store.name,
-        country: store.country,
-        language: store.language,
-        currency: store.currency,
+    try {
+      const res = await fetch('/api/stores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: store.name,
+          country: store.country,
+          language: store.language,
+          currency: store.currency,
+        }),
       })
-      .select()
-      .single()
-    if (error || !data) return false
-    setStores(prev => [...prev, {
-      id: data.id,
-      name: data.name,
-      country: data.country as Country,
-      language: data.language as Language,
-      currency: data.currency as Currency,
-      connectedPlatforms: emptyPlatforms(),
-    }])
-    setStoresView('list')
-    return true
+
+      if (!res.ok) return false
+
+      const { store: savedStore } = await res.json() as { store: ApiStoreRow }
+      setStores(prev => [...prev, {
+        id: savedStore.id,
+        name: savedStore.name,
+        country: savedStore.country as Country,
+        language: savedStore.language as Language,
+        currency: savedStore.currency as Currency,
+        connectedPlatforms: emptyPlatforms(),
+      }])
+      setStoresView('list')
+      return true
+    } catch {
+      return false
+    }
   }
 
   const handleDeleteStore = async (storeId: string) => {
-    await supabase.from('stores').delete().eq('id', storeId)
+    await fetch(`/api/stores?storeId=${encodeURIComponent(storeId)}`, { method: 'DELETE' })
     setStores(prev => prev.filter(s => s.id !== storeId))
   }
 
