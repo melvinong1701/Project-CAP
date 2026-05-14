@@ -10,6 +10,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+const ORG_ID = '00000000-0000-0000-0000-000000000001'
+
 // ─── Nav ────────────────────────────────────────────────────────────────────
 
 const navItems = [
@@ -545,7 +547,7 @@ function StoreCard({ store, onClick, onDelete }: { store: StoreRecord; onClick: 
 
 interface AddStoreFormProps {
   onBack: () => void
-  onSave: (store: StoreRecord) => void
+  onSave: (store: StoreRecord) => Promise<boolean>
 }
 
 function AddStoreForm({ onBack, onSave }: AddStoreFormProps) {
@@ -553,6 +555,8 @@ function AddStoreForm({ onBack, onSave }: AddStoreFormProps) {
   const [country, setCountry] = useState<Country>('SG')
   const [language, setLanguage] = useState<Language>('en')
   const [currency, setCurrency] = useState<Currency>('SGD')
+  const [isSaving, setIsSaving] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
 
   const handleCountryChange = (c: Country) => {
     setCountry(c)
@@ -560,9 +564,11 @@ function AddStoreForm({ onBack, onSave }: AddStoreFormProps) {
     setCurrency(countryDefaults[c].currency)
   }
 
-  const handleSave = () => {
-    if (!name.trim()) return
-    onSave({
+  const handleSave = async () => {
+    if (!name.trim() || isSaving) return
+    setIsSaving(true)
+    setErrorMsg('')
+    const saved = await onSave({
       id: `store-${Date.now()}`,
       name: name.trim(),
       country,
@@ -570,6 +576,10 @@ function AddStoreForm({ onBack, onSave }: AddStoreFormProps) {
       currency,
       connectedPlatforms: emptyPlatforms(),
     })
+    if (!saved) {
+      setErrorMsg('Failed to save store. Please try again.')
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -639,19 +649,28 @@ function AddStoreForm({ onBack, onSave }: AddStoreFormProps) {
           </div>
         </div>
 
+        {errorMsg && (
+          <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 rounded-lg p-3">
+            <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+            <p>{errorMsg}</p>
+          </div>
+        )}
+
         <div className="flex gap-3 pt-2">
           <button
             onClick={onBack}
+            disabled={isSaving}
             className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            disabled={!name.trim()}
-            className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-semibold transition-colors"
+            disabled={!name.trim() || isSaving}
+            className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
           >
-            Add store
+            {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+            {isSaving ? 'Saving...' : 'Add store'}
           </button>
         </div>
       </div>
@@ -818,6 +837,7 @@ export default function SettingsPage() {
       const { data: storesData, error } = await supabase
         .from('stores')
         .select('*')
+        .eq('organization_id', ORG_ID)
         .order('created_at')
 
       if (error || !storesData) { setStoresLoading(false); return }
@@ -882,10 +902,16 @@ export default function SettingsPage() {
   const handleAddStore = async (store: StoreRecord) => {
     const { data, error } = await supabase
       .from('stores')
-      .insert({ name: store.name, country: store.country, language: store.language, currency: store.currency })
+      .insert({
+        organization_id: ORG_ID,
+        name: store.name,
+        country: store.country,
+        language: store.language,
+        currency: store.currency,
+      })
       .select()
       .single()
-    if (error || !data) return
+    if (error || !data) return false
     setStores(prev => [...prev, {
       id: data.id,
       name: data.name,
@@ -895,6 +921,7 @@ export default function SettingsPage() {
       connectedPlatforms: emptyPlatforms(),
     }])
     setStoresView('list')
+    return true
   }
 
   const handleDeleteStore = async (storeId: string) => {
