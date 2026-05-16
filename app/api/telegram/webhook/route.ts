@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
     // Insert message
     const { error: msgErr } = await supabase.from('messages').insert({
       conversation_id: conv.id,
+      organization_id: ORG_ID,
       sender: 'customer',
       content: text,
       timestamp,
