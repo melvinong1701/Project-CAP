@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import {
-  buildPreprocessingResult,
   preprocessMessage,
   suggestReply,
   type ConversationContextMessage,
@@ -25,10 +24,6 @@ interface ConversationRow {
   channel: Channel
   sender_name: string | null
   last_message: string | null
-  ai_intent: string | null
-  ai_language: string | null
-  ai_sentiment: string | null
-  ai_urgency: string | null
 }
 
 interface MessageRow {
@@ -68,41 +63,6 @@ function toContextMessages(messages: MessageRow[] | null): ConversationContextMe
     }))
 }
 
-function hasCachedClassification(conversation: ConversationRow | null): boolean {
-  return Boolean(
-    conversation?.ai_intent &&
-    conversation.ai_language &&
-    conversation.ai_sentiment &&
-    conversation.ai_urgency
-  )
-}
-
-function preprocessingFromConversation(conversation: ConversationRow): PreprocessingResult {
-  return buildPreprocessingResult({
-    language: conversation.ai_language,
-    intent: conversation.ai_intent,
-    sentiment: conversation.ai_sentiment,
-    urgency: conversation.ai_urgency,
-  })
-}
-
-async function persistPreprocessing(params: {
-  supabase: ReturnType<typeof getSupabase>
-  conversationId: string
-  preprocessing: PreprocessingResult
-}) {
-  return params.supabase
-    .from('conversations')
-    .update({
-      ai_intent: params.preprocessing.intent,
-      ai_language: params.preprocessing.language,
-      ai_sentiment: params.preprocessing.sentiment,
-      ai_urgency: params.preprocessing.urgency,
-    })
-    .eq('id', params.conversationId)
-    .eq('organization_id', ORG_ID)
-}
-
 export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.OPENAI_API_KEY
@@ -122,7 +82,7 @@ export async function POST(req: NextRequest) {
     if (body.conversationId) {
       const { data: conv, error: convErr } = await supabase
         .from('conversations')
-        .select('id, channel, sender_name, last_message, ai_intent, ai_language, ai_sentiment, ai_urgency')
+        .select('id, channel, sender_name, last_message')
         .eq('id', body.conversationId)
         .eq('organization_id', ORG_ID)
         .single()
@@ -167,25 +127,7 @@ export async function POST(req: NextRequest) {
       ],
     }
 
-    let preprocessing: PreprocessingResult
-
-    if (conversation && hasCachedClassification(conversation)) {
-      preprocessing = preprocessingFromConversation(conversation)
-    } else {
-      preprocessing = await preprocessMessage(suggestInput)
-
-      if (conversation) {
-        const { error: persistErr } = await persistPreprocessing({
-          supabase,
-          conversationId: conversation.id,
-          preprocessing,
-        })
-
-        if (persistErr) {
-          return jsonError('Failed to persist AI classification', 500)
-        }
-      }
-    }
+    const preprocessing: PreprocessingResult = await preprocessMessage(suggestInput)
 
     const result = await suggestReply(suggestInput, preprocessing)
 
