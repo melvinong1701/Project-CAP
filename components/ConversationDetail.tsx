@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Conversation, Message } from '@/lib/types'
 import { MessageThread } from './MessageThread'
 import { AiSuggestionPanel } from './AiSuggestionPanel'
@@ -23,6 +23,11 @@ export function ConversationDetail({
 }: ConversationDetailProps) {
   const [replyValue, setReplyValue] = useState('')
   const [showCustomerPanel, setShowCustomerPanel] = useState(true)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+  }, [conversation.id, conversation.messages])
 
   const handleSend = (text: string) => {
     const newMessage: Message = {
@@ -99,6 +104,7 @@ export function ConversationDetail({
         {/* Messages */}
         <div className="flex-1 min-h-0 overflow-y-auto bg-white">
           <MessageThread messages={conversation.messages} />
+          <div ref={messagesEndRef} />
         </div>
 
         {/* AI suggestion + Reply */}
