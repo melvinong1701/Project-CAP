@@ -242,6 +242,7 @@ async function callOpenAiJson(params: {
     ],
     response_format: { type: 'json_object' },
     max_completion_tokens: params.maxCompletionTokens,
+    temperature: 0,
   })
 
   const content = response.choices[0]?.message?.content
@@ -268,6 +269,7 @@ async function callOpenAiMessagesJson(params: {
     messages: params.messages,
     response_format: { type: 'json_object' },
     max_completion_tokens: params.maxCompletionTokens,
+    temperature: 0,
   })
 
   const content = response.choices[0]?.message?.content
