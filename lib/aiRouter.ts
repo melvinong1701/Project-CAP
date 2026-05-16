@@ -241,7 +241,7 @@ async function callOpenAiJson(params: {
       { role: 'user', content: JSON.stringify(params.user) },
     ],
     response_format: { type: 'json_object' },
-    max_tokens: params.maxCompletionTokens,
+    max_completion_tokens: params.maxCompletionTokens,
   })
 
   const content = response.choices[0]?.message?.content
@@ -267,7 +267,7 @@ async function callOpenAiMessagesJson(params: {
     model: params.model,
     messages: params.messages,
     response_format: { type: 'json_object' },
-    max_tokens: params.maxCompletionTokens,
+    max_completion_tokens: params.maxCompletionTokens,
   })
 
   const content = response.choices[0]?.message?.content
