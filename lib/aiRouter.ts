@@ -2,9 +2,9 @@ import OpenAI from 'openai'
 import type { AiConfidence, Channel } from '@/lib/types'
 
 export const AI_MODEL_ROUTER = {
-  preprocessing: 'gpt-4o-mini',
-  replyDefault: 'gpt-4o-mini',
-  replyEscalation: 'gpt-4o',
+  preprocessing: 'gpt-5.4-nano',
+  replyDefault: 'gpt-5.4-mini',
+  replyEscalation: 'gpt-5.4',
 } as const
 
 export type AiIntent =
@@ -300,7 +300,7 @@ export async function preprocessMessage(input: SuggestReplyInput): Promise<Prepr
     'You are the Queue 1 preprocessing router for Project Cap.',
     'Return JSON only.',
     'Classify this inbound marketplace support message before reply generation.',
-    'gpt-4o-mini is used here for cheap, fast, structured preprocessing on 100% of inbound messages.',
+    'gpt-5.4-nano is used here for cheap, fast, structured preprocessing on 100% of inbound messages.',
     'Use only these intents: order_status, shipping, product_question, returns, refund, dispute, pricing, availability, other.',
     'Use sentiment: positive, neutral, negative.',
     'Use urgency: low, medium, high.',
@@ -347,8 +347,8 @@ async function runReplyGeneration(params: {
     'confidence must be high, medium, or low.',
     'autoSent may be true only when confidence is high and the answer is factual/routine.',
     isEscalation
-      ? 'This is an escalation-tier generation using gpt-4o for higher-risk support cases.'
-      : 'This is a default generation using gpt-4o-mini for normal support replies.',
+      ? 'This is an escalation-tier generation using gpt-5.4 for higher-risk support cases.'
+      : 'This is a default generation using gpt-5.4-mini for normal support replies.',
   ].join(' ')
 
   const chatHistory: OpenAiChatMessage[] = (params.input.conversationHistory ?? [])
