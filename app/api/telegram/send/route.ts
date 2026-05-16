@@ -10,6 +10,8 @@ function getSupabase() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
+const ORG_ID = '00000000-0000-0000-0000-000000000001'
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = getSupabase()
@@ -65,6 +67,7 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString()
     await supabase.from('messages').insert({
       conversation_id: conversationId,
+      organization_id: ORG_ID,
       sender: 'agent',
       content: text,
       timestamp: now,
