@@ -30,7 +30,8 @@ export function ReplyBox({ onSend, initialValue = '' }: ReplyBoxProps) {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
       handleSend()
     }
   }
@@ -43,7 +44,7 @@ export function ReplyBox({ onSend, initialValue = '' }: ReplyBoxProps) {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Write a reply… (⌘↵ to send)"
+          placeholder="Write a reply… (Enter to send)"
           rows={1}
           className="flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 resize-none outline-none leading-relaxed min-h-[24px]"
         />
@@ -68,7 +69,7 @@ export function ReplyBox({ onSend, initialValue = '' }: ReplyBoxProps) {
           </button>
         </div>
       </div>
-      <p className="text-xs text-gray-400 mt-1.5 text-right">⌘↵ to send</p>
+      <p className="text-xs text-gray-400 mt-1.5 text-right">Shift+↵ for new line</p>
     </div>
   )
 }
