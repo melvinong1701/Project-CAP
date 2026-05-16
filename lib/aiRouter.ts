@@ -27,6 +27,8 @@ export interface ConversationContextMessage {
   timestamp?: string
 }
 
+export type MessageContext = Pick<ConversationContextMessage, 'sender' | 'content'>
+
 export interface RetrievedContextSnippet {
   title: string
   content: string
@@ -172,6 +174,32 @@ async function callOpenAiJson(params: {
   return parseJsonObject(content)
 }
 
+type OpenAiChatMessage = {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+async function callOpenAiMessagesJson(params: {
+  model: string
+  messages: OpenAiChatMessage[]
+  maxCompletionTokens: number
+}): Promise<Record<string, unknown>> {
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  const response = await client.chat.completions.create({
+    model: params.model,
+    messages: params.messages,
+    response_format: { type: 'json_object' },
+    max_tokens: params.maxCompletionTokens,
+  })
+
+  const content = response.choices[0]?.message?.content
+  if (!content) {
+    throw new Error('OpenAI returned an empty response')
+  }
+
+  return parseJsonObject(content)
+}
+
 export function buildPreprocessingResult(input: CachedPreprocessingInput): PreprocessingResult {
   const base = {
     language: asString(input.language, 'unknown'),
@@ -230,9 +258,10 @@ async function runReplyGeneration(params: {
 }): Promise<ReplyResult> {
   const isEscalation = params.model === AI_MODEL_ROUTER.replyEscalation
   const system = [
-    'You are the Queue 2 reply generator for Project Cap, an AI-native inbox for SEA marketplace sellers.',
+    'You are a helpful customer service agent for an e-commerce store.',
     'Return JSON only with keys: text, confidence, autoSent.',
-    'Use English, Bahasa Malaysia, or Bahasa Indonesia to match the customer language.',
+    'Reply in the same language the customer used. Be concise and friendly.',
+    "If you don't have enough information to answer, such as specific order details, acknowledge the question and let the customer know you'll look into it. Do not make up information.",
     'Ground the answer only in the provided conversation and retrieved store context.',
     'Do not invent order status, refund promises, delivery dates, discounts, or policy details.',
     'Keep the customer-facing reply concise, normally 1-3 sentences.',
@@ -243,19 +272,36 @@ async function runReplyGeneration(params: {
       : 'This is a default generation using gpt-4o-mini for normal support replies.',
   ].join(' ')
 
-  const raw = await callOpenAiJson({
+  const chatHistory: OpenAiChatMessage[] = (params.input.conversationHistory ?? [])
+    .slice(0, -1)
+    .map((message) => ({
+      role: message.sender === 'customer' ? 'user' : 'assistant',
+      content: message.content,
+    }))
+
+  const contextPayload = [
+    params.input.retrievedContext?.length
+      ? `Retrieved store context:\n${JSON.stringify(params.input.retrievedContext.slice(0, 5))}`
+      : null,
+    params.input.sellerToneRules?.length
+      ? `Seller tone rules:\n${params.input.sellerToneRules.slice(0, 8).join('\n')}`
+      : null,
+    `Preprocessing:\n${JSON.stringify(params.preprocessing)}`,
+    params.escalationReason ? `Escalation reason: ${params.escalationReason}` : null,
+    `Channel: ${params.input.channel}`,
+    params.input.customerName ? `Customer name: ${params.input.customerName}` : null,
+  ].filter((item): item is string => Boolean(item))
+
+  const raw = await callOpenAiMessagesJson({
     model: params.model,
-    system,
-    user: {
-      latestMessage: params.input.latestMessage,
-      channel: params.input.channel,
-      customerName: params.input.customerName,
-      preprocessing: params.preprocessing,
-      escalationReason: params.escalationReason,
-      recentHistory: params.input.conversationHistory?.slice(-6) ?? [],
-      retrievedContext: params.input.retrievedContext?.slice(0, 5) ?? [],
-      sellerToneRules: params.input.sellerToneRules?.slice(0, 8) ?? [],
-    },
+    messages: [
+      {
+        role: 'system',
+        content: contextPayload.length ? `${system}\n\n${contextPayload.join('\n\n')}` : system,
+      },
+      ...chatHistory,
+      { role: 'user', content: params.input.latestMessage },
+    ],
     maxCompletionTokens: 600,
   })
 

@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
         .eq('conversation_id', body.conversationId)
         .eq('organization_id', ORG_ID)
         .order('timestamp', { ascending: false })
-        .limit(8)
+        .limit(10)
 
       if (msgErr) {
         return jsonError('Failed to load conversation messages', 500)
