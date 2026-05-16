@@ -24,7 +24,7 @@ Target market: Singapore + Malaysia first. Language support required from Day 1:
 | Backend | Next.js API Routes + separate worker process |
 | Database | PostgreSQL via Supabase |
 | Cache / Queue | Redis via Upstash |
-| AI | Anthropic Claude API (Sonnet for speed, Opus for complex) |
+| AI | OpenAI API with two-queue model routing |
 | Auth | NextAuth.js |
 | File storage | Cloudflare R2 |
 | Deploy | Vercel (frontend) + Railway (workers) |
@@ -105,6 +105,16 @@ Normalised types (source of truth): `lib/types.ts` — `Conversation`, `Message`
 - **Medium confidence** → drafted for agent review before sending
 - **Low confidence** → flagged for human; no suggestion shown
 - Auto-send must require an explicit `high` confidence gate — never auto-send on `medium`
+
+## AI model routing
+
+Use two separate queues, not a single 80/15/5 distribution.
+
+**Queue 1 — Pre-processing:** run `gpt-5.4-nano` on 100% of inbound messages for language detection, intent classification, sentiment/urgency scoring, and routing.
+
+**Queue 2 — Reply generation:** use `gpt-5.4-mini` for normal replies. Use `gpt-5.4` for escalation replies. Do not put `gpt-5.5` in the default escalation path unless a later evaluation explicitly justifies the cost.
+
+Escalate from Queue 1 to `gpt-5.4` when sentiment is `negative` and urgency is `high`, or when intent is `refund`/`dispute`. Also escalate when the `gpt-5.4-mini` reply comes back with `low` confidence.
 
 ---
 

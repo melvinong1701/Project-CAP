@@ -28,10 +28,12 @@ interface ConvRow {
 
 interface MsgRow {
   id: string
+  organization_id: string
   conversation_id: string
   sender: string
   content: string
   timestamp: string
+  external_id: string | null
 }
 
 interface StorePlatformRow {
@@ -80,7 +82,7 @@ function mapMsg(row: MsgRow): Message {
 interface TelegramSetupModalProps {
   existingStores: { id: string; name: string }[]
   onClose: () => void
-  onDone: () => void
+  onDone: () => void | Promise<void>
 }
 
 type SetupStep = 'store' | 'token' | 'connecting' | 'done' | 'error'
@@ -105,7 +107,7 @@ function TelegramSetupModal({ existingStores, onClose, onDone }: TelegramSetupMo
       const name = storeName.trim() || 'My Store'
       const { data, error } = await supabase
         .from('stores')
-        .insert({ name, country: 'SG', language: 'en', currency: 'SGD' })
+        .insert({ name, organization_id: ORG_ID, country: 'SG', language: 'en', currency: 'SGD' })
         .select('id')
         .single()
       if (error || !data) {
@@ -272,7 +274,7 @@ function TelegramSetupModal({ existingStores, onClose, onDone }: TelegramSetupMo
             <div className="bg-gray-50 rounded-xl p-4 text-xs text-gray-600">
               Messages sent to your Telegram bot will now appear in this inbox in real time.
             </div>
-            <button onClick={() => { onDone(); onClose() }} className="w-full py-2.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold transition-colors">
+            <button onClick={async () => { await onDone(); onClose() }} className="w-full py-2.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold transition-colors">
               Done
             </button>
           </>
@@ -312,6 +314,7 @@ export default function Home() {
       ? await supabase
           .from('messages')
           .select('*')
+          .eq('organization_id', ORG_ID)
           .in('conversation_id', convIds)
           .order('timestamp', { ascending: true })
       : { data: [] as MsgRow[] }
@@ -334,34 +337,39 @@ export default function Home() {
   }, [storeNames, activeConvId])
 
   // ── Fetch stores for sidebar ──────────────────────────────────────────────
-  useEffect(() => {
-    async function fetchStores() {
-      const { data: storeRows } = await supabase
-        .from('stores')
-        .select('id, name')
-        .eq('organization_id', ORG_ID)
+  const fetchStores = useCallback(async () => {
+    const { data: storeRows } = await supabase
+      .from('stores')
+      .select('id, name')
+      .eq('organization_id', ORG_ID)
 
-      const { data: platformRows } = await supabase
-        .from('store_platforms')
-        .select('store_id, platform_id, account_label')
+    const storeIds = (storeRows ?? []).map((s: StoreRow) => s.id)
+    const { data: platformRows } = storeIds.length
+      ? await supabase
+          .from('store_platforms')
+          .select('store_id, platform_id, account_label')
+          .in('store_id', storeIds)
+      : { data: [] as StorePlatformRow[] }
 
-      const names: Record<string, string> = {}
-      ;(storeRows ?? []).forEach((s: StoreRow) => { names[s.id] = s.name })
-      setStoreNames(names)
-      setRawStores((storeRows ?? []).map((s: StoreRow) => ({ id: s.id, name: s.name })))
+    const names: Record<string, string> = {}
+    ;(storeRows ?? []).forEach((s: StoreRow) => { names[s.id] = s.name })
+    setStoreNames(names)
+    setRawStores((storeRows ?? []).map((s: StoreRow) => ({ id: s.id, name: s.name })))
 
-      // Build sidebar stores from store_platforms (one entry per connected channel per store)
-      const sidebarStores: Store[] = (platformRows ?? []).map((p: StorePlatformRow) => ({
-        id: `${p.store_id}:${p.platform_id}`,
-        name: names[p.store_id] ?? p.account_label ?? 'Store',
-        channel: p.platform_id as Store['channel'],
-        unreadCount: 0,
-      }))
+    // Build sidebar stores from store_platforms (one entry per connected channel per store)
+    const sidebarStores: Store[] = (platformRows ?? []).map((p: StorePlatformRow) => ({
+      id: `${p.store_id}:${p.platform_id}`,
+      name: names[p.store_id] ?? p.account_label ?? 'Store',
+      channel: p.platform_id as Store['channel'],
+      unreadCount: 0,
+    }))
 
-      setStores(sidebarStores)
-    }
-    fetchStores()
+    setStores(sidebarStores)
   }, [])
+
+  useEffect(() => {
+    fetchStores()
+  }, [fetchStores])
 
   // ── Load conversations once storeNames are ready ──────────────────────────
   useEffect(() => {
@@ -374,13 +382,30 @@ export default function Home() {
       .channel('realtime:messages')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `organization_id=eq.${ORG_ID}` },
         (payload) => {
           const newMsg = mapMsg(payload.new as MsgRow)
           setConversations(prev =>
             prev.map(c => {
               if (c.id !== newMsg.conversationId) return c
-              // Skip if we already have this message (optimistic insert)
+              const optimisticIndex = c.messages.findIndex(m => {
+                const isSameDirection =
+                  (m.sender === newMsg.sender) ||
+                  (m.sender === 'ai' && newMsg.sender === 'agent')
+                const isRecent = Math.abs(m.timestamp.getTime() - newMsg.timestamp.getTime()) < 15000
+                return m.id.startsWith('msg-') && isSameDirection && m.content === newMsg.content && isRecent
+              })
+              if (optimisticIndex >= 0) {
+                const nextMessages = [...c.messages]
+                nextMessages[optimisticIndex] = newMsg
+                return {
+                  ...c,
+                  messages: nextMessages,
+                  lastMessage: newMsg.content,
+                  lastMessageAt: newMsg.timestamp,
+                  isRead: newMsg.sender === 'agent' ? c.isRead : false,
+                }
+              }
               if (c.messages.some(m => m.id === newMsg.id)) return c
               return {
                 ...c,
@@ -391,11 +416,32 @@ export default function Home() {
               }
             })
           )
+          if ((payload.new as MsgRow).sender === 'customer') {
+            const convId = (payload.new as MsgRow).conversation_id
+            fetch('/api/ai/suggest', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ conversationId: convId }),
+            })
+              .then(r => r.json())
+              .then((res: { data?: { text: string; confidence: string }; error?: string }) => {
+                if (res.data) {
+                  setConversations(prev =>
+                    prev.map(c =>
+                      c.id === convId
+                        ? { ...c, aiSuggestion: { text: res.data!.text, confidence: res.data!.confidence as 'high' | 'medium' | 'low', autoSent: false } }
+                        : c
+                    )
+                  )
+                }
+              })
+              .catch(() => {})
+          }
         }
       )
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'conversations' },
+        { event: 'INSERT', schema: 'public', table: 'conversations', filter: `organization_id=eq.${ORG_ID}` },
         () => {
           // New conversation arrived — re-fetch to get full data
           fetchConversations()
@@ -403,7 +449,7 @@ export default function Home() {
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'conversations' },
+        { event: 'UPDATE', schema: 'public', table: 'conversations', filter: `organization_id=eq.${ORG_ID}` },
         (payload) => {
           const updated = payload.new as ConvRow
           setConversations(prev =>
@@ -433,6 +479,7 @@ export default function Home() {
       unreadCount: conversations.filter(c => c.storeId === storeId && !c.isRead).length,
     }
   })
+  const hasConnectedChannels = stores.length > 0
 
   // ── Filtering ─────────────────────────────────────────────────────────────
   const filteredConversations = conversations.filter(c => {
@@ -452,12 +499,12 @@ export default function Home() {
   const handleSelect = async (id: string) => {
     setActiveConvId(id)
     setConversations(prev => prev.map(c => c.id === id ? { ...c, isRead: true } : c))
-    await supabase.from('conversations').update({ is_read: true }).eq('id', id)
+    await supabase.from('conversations').update({ is_read: true }).eq('id', id).eq('organization_id', ORG_ID)
   }
 
   const handleMarkRead = async (id: string) => {
     setConversations(prev => prev.map(c => c.id === id ? { ...c, isRead: true } : c))
-    await supabase.from('conversations').update({ is_read: true }).eq('id', id)
+    await supabase.from('conversations').update({ is_read: true }).eq('id', id).eq('organization_id', ORG_ID)
   }
 
   const handleSendMessage = async (convId: string, message: Message) => {
@@ -504,10 +551,11 @@ export default function Home() {
         <TelegramSetupModal
           existingStores={rawStores}
           onClose={() => setShowTelegramSetup(false)}
-          onDone={() => {
+          onDone={async () => {
             // Refresh stores + conversations after connecting
-            setStoreNames({})
             setLoading(true)
+            await fetchStores()
+            await fetchConversations()
           }}
         />
       )}
@@ -536,27 +584,41 @@ export default function Home() {
         />
       ) : conversations.length === 0 ? (
         /* ── Empty state: no conversations yet ── */
-        <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8">
-          <div className="w-16 h-16 rounded-2xl bg-sky-50 flex items-center justify-center">
-            <span className="text-3xl">💬</span>
+        hasConnectedChannels ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8">
+            <div className="w-16 h-16 rounded-2xl bg-green-50 flex items-center justify-center">
+              <span className="text-3xl">✅</span>
+            </div>
+            <div className="text-center max-w-xs">
+              <h3 className="text-sm font-semibold text-gray-900 mb-1">Bot connected!</h3>
+              <p className="text-sm text-gray-400 leading-relaxed">
+                Send a message to your Telegram bot — it will appear here in real time.
+              </p>
+            </div>
           </div>
-          <div className="text-center max-w-xs">
-            <h3 className="text-sm font-semibold text-gray-900 mb-1">No messages yet</h3>
-            <p className="text-sm text-gray-400 leading-relaxed">
-              Connect a Telegram bot to start receiving customer messages in real time.
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8">
+            <div className="w-16 h-16 rounded-2xl bg-sky-50 flex items-center justify-center">
+              <span className="text-3xl">💬</span>
+            </div>
+            <div className="text-center max-w-xs">
+              <h3 className="text-sm font-semibold text-gray-900 mb-1">No messages yet</h3>
+              <p className="text-sm text-gray-400 leading-relaxed">
+                Connect a Telegram bot to start receiving customer messages in real time.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowTelegramSetup(true)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold transition-colors shadow-sm"
+            >
+              <span className="text-base leading-none">T</span>
+              Connect Telegram bot
+            </button>
+            <p className="text-xs text-gray-300">
+              More channels (Shopee, Lazada, TikTok Shop) coming soon
             </p>
           </div>
-          <button
-            onClick={() => setShowTelegramSetup(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-sm font-semibold transition-colors shadow-sm"
-          >
-            <span className="text-base leading-none">T</span>
-            Connect Telegram bot
-          </button>
-          <p className="text-xs text-gray-300">
-            More channels (Shopee, Lazada, TikTok Shop) coming soon
-          </p>
-        </div>
+        )
       ) : (
         <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
           Select a conversation
