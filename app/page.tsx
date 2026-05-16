@@ -4,7 +4,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { ConversationList } from '@/components/ConversationList'
 import { ConversationDetail } from '@/components/ConversationDetail'
 import { supabase } from '@/lib/supabase'
-import { Conversation, Message, Store } from '@/lib/types'
+import { AiConfidence, Conversation, Message, Store } from '@/lib/types'
 import { X, Loader2, Check, AlertCircle } from 'lucide-react'
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001'
@@ -22,6 +22,7 @@ interface ConvRow {
   last_message: string | null
   last_message_at: string
   is_read: boolean
+  ai_suggestion: { text: string; confidence: string; autoSent: boolean } | null
   tags: string[] | null
   assigned_to: string | null
 }
@@ -62,6 +63,13 @@ function mapConv(row: ConvRow, messages: Message[] = []): Conversation {
     lastMessageAt: new Date(row.last_message_at),
     isRead: row.is_read,
     messages,
+    aiSuggestion: row.ai_suggestion
+      ? {
+          text: row.ai_suggestion.text,
+          confidence: row.ai_suggestion.confidence as AiConfidence,
+          autoSent: row.ai_suggestion.autoSent,
+        }
+      : undefined,
     tags: row.tags ?? [],
     assignedTo: row.assigned_to ?? undefined,
   }
@@ -460,6 +468,13 @@ export default function Home() {
                     lastMessage: updated.last_message ?? c.lastMessage,
                     lastMessageAt: new Date(updated.last_message_at),
                     isRead: updated.is_read,
+                    aiSuggestion: updated.ai_suggestion
+                      ? {
+                          text: updated.ai_suggestion.text,
+                          confidence: updated.ai_suggestion.confidence as AiConfidence,
+                          autoSent: updated.ai_suggestion.autoSent,
+                        }
+                      : undefined,
                   }
                 : c
             )
@@ -536,10 +551,15 @@ export default function Home() {
     }
   }
 
-  const handleDismissAi = (convId: string) => {
+  const handleDismissAi = async (convId: string) => {
     setConversations(prev =>
       prev.map(c => c.id === convId ? { ...c, aiSuggestion: undefined } : c)
     )
+    await supabase
+      .from('conversations')
+      .update({ ai_suggestion: null })
+      .eq('id', convId)
+      .eq('organization_id', ORG_ID)
   }
 
   // ── Render ────────────────────────────────────────────────────────────────

@@ -260,8 +260,8 @@ async function runReplyGeneration(params: {
   const system = [
     'You are a helpful customer service agent for an e-commerce store.',
     'Return JSON only with keys: text, confidence, autoSent.',
-    'Reply in the same language the customer used. Be concise and friendly.',
-    "If you don't have enough information to answer, such as specific order details, acknowledge the question and let the customer know you'll look into it. Do not make up information.",
+    "Always reply in the language of the customer's MOST RECENT message - ignore the language of earlier turns in the conversation. Be concise and friendly.",
+    "If you don't have enough information to answer (e.g. specific order details), acknowledge the question and let the customer know you'll look into it - do not make up information.",
     'Ground the answer only in the provided conversation and retrieved store context.',
     'Do not invent order status, refund promises, delivery dates, discounts, or policy details.',
     'Keep the customer-facing reply concise, normally 1-3 sentences.',

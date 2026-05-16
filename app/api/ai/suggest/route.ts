@@ -131,6 +131,24 @@ export async function POST(req: NextRequest) {
 
     const result = await suggestReply(suggestInput, preprocessing)
 
+    if (body.conversationId) {
+      const { error: updateErr } = await supabase
+        .from('conversations')
+        .update({
+          ai_suggestion: {
+            text: result.text,
+            confidence: result.confidence,
+            autoSent: false,
+          },
+        })
+        .eq('id', body.conversationId)
+        .eq('organization_id', ORG_ID)
+
+      if (updateErr) {
+        return jsonError('Failed to persist AI suggestion', 500)
+      }
+    }
+
     return NextResponse.json({
       data: result,
     })
