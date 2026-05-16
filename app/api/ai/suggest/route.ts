@@ -6,6 +6,7 @@ import {
   type ConversationContextMessage,
   type PreprocessingResult,
   type RetrievedContextSnippet,
+  type StoreConfig,
   type SuggestReplyInput,
 } from '@/lib/aiRouter'
 import type { Channel } from '@/lib/types'
@@ -21,6 +22,7 @@ interface SuggestRequestBody {
 
 interface ConversationRow {
   id: string
+  store_id: string | null
   channel: Channel
   sender_name: string | null
   last_message: string | null
@@ -77,12 +79,13 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabase()
     let conversation: ConversationRow | null = null
+    let storeConfig: StoreConfig | null = null
     let history: ConversationContextMessage[] = []
 
     if (body.conversationId) {
       const { data: conv, error: convErr } = await supabase
         .from('conversations')
-        .select('id, channel, sender_name, last_message')
+        .select('id, store_id, channel, sender_name, last_message')
         .eq('id', body.conversationId)
         .eq('organization_id', ORG_ID)
         .single()
@@ -106,6 +109,21 @@ export async function POST(req: NextRequest) {
       }
 
       history = toContextMessages(messages as MessageRow[] | null).reverse()
+
+      if (conversation.store_id) {
+        const { data: config, error: configErr } = await supabase
+          .from('store_ai_config')
+          .select('store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions')
+          .eq('store_id', conversation.store_id)
+          .eq('organization_id', ORG_ID)
+          .maybeSingle()
+
+        if (configErr) {
+          return jsonError('Failed to load store AI config', 500)
+        }
+
+        storeConfig = config as StoreConfig | null
+      }
     }
 
     const latestMessage = body.latestMessage?.trim() || conversation?.last_message?.trim()
@@ -120,6 +138,7 @@ export async function POST(req: NextRequest) {
       latestMessage,
       conversationHistory: history,
       retrievedContext: body.retrievedContext ?? [],
+      storeConfig,
       sellerToneRules: body.sellerToneRules ?? [
         'Sound helpful, concise, and human.',
         'Do not overpromise.',

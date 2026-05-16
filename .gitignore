@@ -37,3 +37,13 @@ next-env.d.ts
 
 # local scripts (contain credentials — never commit)
 *.command
+
+# backup files
+*.bak
+
+# credential files — intentionally removed from git, keep local only
+lib/supabaseConfig.ts
+
+# local supabase dev setup — not part of the app
+/supabase/
+
