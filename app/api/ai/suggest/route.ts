@@ -47,7 +47,7 @@ function getSupabase() {
 }
 
 function jsonError(error: string, status: number) {
-  return NextResponse.json({ data: null, error, meta: null }, { status })
+  return NextResponse.json({ error }, { status })
 }
 
 function isKnownSender(sender: string): sender is ConversationContextMessage['sender'] {
@@ -168,13 +168,11 @@ export async function POST(req: NextRequest) {
     }
 
     let preprocessing: PreprocessingResult
-    let preprocessingCacheHit = false
 
     if (conversation && hasCachedClassification(conversation)) {
       preprocessing = preprocessingFromConversation(conversation)
-      preprocessingCacheHit = true
     } else {
-      preprocessing = await preprocessMessage(suggestInput, apiKey)
+      preprocessing = await preprocessMessage(suggestInput)
 
       if (conversation) {
         const { error: persistErr } = await persistPreprocessing({
@@ -189,17 +187,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const result = await suggestReply(suggestInput, apiKey, preprocessing)
+    const result = await suggestReply(suggestInput, preprocessing)
 
     return NextResponse.json({
       data: result,
-      error: null,
-      meta: {
-        architecture: 'two-queue-ai-router',
-        preprocessing: 'nano runs on 100% of inbound messages',
-        preprocessingCacheHit,
-        replyGeneration: 'mini by default, gpt-5.4 for escalations',
-      },
     })
   } catch (err) {
     console.error('AI suggest error:', err instanceof Error ? err.message : 'Unknown error')

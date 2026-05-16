@@ -1,9 +1,10 @@
+import OpenAI from 'openai'
 import type { AiConfidence, Channel } from '@/lib/types'
 
 export const AI_MODEL_ROUTER = {
-  preprocessing: 'gpt-5.4-nano',
-  replyDefault: 'gpt-5.4-mini',
-  replyEscalation: 'gpt-5.4',
+  preprocessing: 'gpt-4o-mini',
+  replyDefault: 'gpt-4o-mini',
+  replyEscalation: 'gpt-4o',
 } as const
 
 export type AiIntent =
@@ -52,22 +53,16 @@ export interface PreprocessingResult {
   escalationReason: string | null
 }
 
-export interface ReplyResult {
+export interface SuggestReplyResult {
+  text: string
+  confidence: AiConfidence
+}
+
+interface ReplyResult {
   text: string
   confidence: AiConfidence
   autoSent: boolean
   model: typeof AI_MODEL_ROUTER.replyDefault | typeof AI_MODEL_ROUTER.replyEscalation
-}
-
-export interface SuggestReplyResult {
-  preprocessing: PreprocessingResult
-  suggestion: ReplyResult
-  routing: {
-    preprocessingModel: typeof AI_MODEL_ROUTER.preprocessing
-    replyModel: typeof AI_MODEL_ROUTER.replyDefault | typeof AI_MODEL_ROUTER.replyEscalation
-    escalated: boolean
-    escalationReason: string | null
-  }
 }
 
 export interface CachedPreprocessingInput {
@@ -76,17 +71,6 @@ export interface CachedPreprocessingInput {
   sentiment: unknown
   urgency: unknown
   tags?: unknown
-}
-
-interface ChatCompletionResponse {
-  choices?: Array<{
-    message?: {
-      content?: string | null
-    }
-  }>
-  error?: {
-    message?: string
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -164,36 +148,23 @@ function parseJsonObject(content: string): Record<string, unknown> {
 }
 
 async function callOpenAiJson(params: {
-  apiKey: string
   model: string
   system: string
   user: Record<string, unknown>
   maxCompletionTokens: number
 }): Promise<Record<string, unknown>> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${params.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: params.model,
-      messages: [
-        { role: 'system', content: params.system },
-        { role: 'user', content: JSON.stringify(params.user) },
-      ],
-      response_format: { type: 'json_object' },
-      max_completion_tokens: params.maxCompletionTokens,
-    }),
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  const response = await client.chat.completions.create({
+    model: params.model,
+    messages: [
+      { role: 'system', content: params.system },
+      { role: 'user', content: JSON.stringify(params.user) },
+    ],
+    response_format: { type: 'json_object' },
+    max_tokens: params.maxCompletionTokens,
   })
 
-  const payload = await response.json() as ChatCompletionResponse
-
-  if (!response.ok) {
-    throw new Error(payload.error?.message ?? `OpenAI request failed with ${response.status}`)
-  }
-
-  const content = payload.choices?.[0]?.message?.content
+  const content = response.choices[0]?.message?.content
   if (!content) {
     throw new Error('OpenAI returned an empty response')
   }
@@ -218,12 +189,12 @@ export function buildPreprocessingResult(input: CachedPreprocessingInput): Prepr
   }
 }
 
-export async function preprocessMessage(input: SuggestReplyInput, apiKey: string): Promise<PreprocessingResult> {
+export async function preprocessMessage(input: SuggestReplyInput): Promise<PreprocessingResult> {
   const system = [
     'You are the Queue 1 preprocessing router for Project Cap.',
     'Return JSON only.',
     'Classify this inbound marketplace support message before reply generation.',
-    'Nano is used here for cheap, fast, structured preprocessing on 100% of inbound messages.',
+    'gpt-4o-mini is used here for cheap, fast, structured preprocessing on 100% of inbound messages.',
     'Use only these intents: order_status, shipping, product_question, returns, refund, dispute, pricing, availability, other.',
     'Use sentiment: positive, neutral, negative.',
     'Use urgency: low, medium, high.',
@@ -231,7 +202,6 @@ export async function preprocessMessage(input: SuggestReplyInput, apiKey: string
   ].join(' ')
 
   const raw = await callOpenAiJson({
-    apiKey,
     model: AI_MODEL_ROUTER.preprocessing,
     system,
     user: {
@@ -255,7 +225,6 @@ export async function preprocessMessage(input: SuggestReplyInput, apiKey: string
 async function runReplyGeneration(params: {
   input: SuggestReplyInput
   preprocessing: PreprocessingResult
-  apiKey: string
   model: typeof AI_MODEL_ROUTER.replyDefault | typeof AI_MODEL_ROUTER.replyEscalation
   escalationReason: string | null
 }): Promise<ReplyResult> {
@@ -270,12 +239,11 @@ async function runReplyGeneration(params: {
     'confidence must be high, medium, or low.',
     'autoSent may be true only when confidence is high and the answer is factual/routine.',
     isEscalation
-      ? 'This is an escalation-tier generation using gpt-5.4 for higher-risk support cases.'
-      : 'This is a default generation using gpt-5.4-mini for normal support replies.',
+      ? 'This is an escalation-tier generation using gpt-4o for higher-risk support cases.'
+      : 'This is a default generation using gpt-4o-mini for normal support replies.',
   ].join(' ')
 
   const raw = await callOpenAiJson({
-    apiKey: params.apiKey,
     model: params.model,
     system,
     user: {
@@ -303,10 +271,9 @@ async function runReplyGeneration(params: {
 
 export async function suggestReply(
   input: SuggestReplyInput,
-  apiKey: string,
   preprocessingOverride?: PreprocessingResult
 ): Promise<SuggestReplyResult> {
-  const preprocessing = preprocessingOverride ?? await preprocessMessage(input, apiKey)
+  const preprocessing = preprocessingOverride ?? await preprocessMessage(input)
   const initialReplyModel = preprocessing.shouldEscalate
     ? AI_MODEL_ROUTER.replyEscalation
     : AI_MODEL_ROUTER.replyDefault
@@ -314,7 +281,6 @@ export async function suggestReply(
   const initialSuggestion = await runReplyGeneration({
     input,
     preprocessing,
-    apiKey,
     model: initialReplyModel,
     escalationReason: preprocessing.escalationReason,
   })
@@ -324,31 +290,18 @@ export async function suggestReply(
     const escalatedSuggestion = await runReplyGeneration({
       input,
       preprocessing,
-      apiKey,
       model: AI_MODEL_ROUTER.replyEscalation,
       escalationReason,
     })
 
     return {
-      preprocessing,
-      suggestion: escalatedSuggestion,
-      routing: {
-        preprocessingModel: AI_MODEL_ROUTER.preprocessing,
-        replyModel: AI_MODEL_ROUTER.replyEscalation,
-        escalated: true,
-        escalationReason,
-      },
+      text: escalatedSuggestion.text,
+      confidence: escalatedSuggestion.confidence,
     }
   }
 
   return {
-    preprocessing,
-    suggestion: initialSuggestion,
-    routing: {
-      preprocessingModel: AI_MODEL_ROUTER.preprocessing,
-      replyModel: initialReplyModel,
-      escalated: initialReplyModel === AI_MODEL_ROUTER.replyEscalation,
-      escalationReason: preprocessing.escalationReason,
-    },
+    text: initialSuggestion.text,
+    confidence: initialSuggestion.confidence,
   }
 }
