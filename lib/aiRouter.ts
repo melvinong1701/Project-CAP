@@ -167,10 +167,10 @@ function buildStoreContext(config: StoreConfig | null): string {
     .filter(Boolean)
 
   const lines = [
-    `You are representing: ${config.store_name ?? 'an e-commerce store'}.`,
-    `Tone: ${config.tone ?? 'friendly and professional'}.`,
+    `You are representing: ${sanitizeText(config.store_name ?? 'an e-commerce store')}.`,
+    `Tone: ${sanitizeText(config.tone ?? 'friendly and professional')}.`,
     config.primary_language
-      ? `Default language if the customer's language cannot be determined: ${config.primary_language}.`
+      ? `Default language if the customer's language cannot be determined: ${sanitizeText(config.primary_language)}.`
       : '',
     config.return_policy
       ? `Return policy: ${sanitizeText(config.return_policy)}`

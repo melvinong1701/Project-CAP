@@ -45,5 +45,6 @@ next-env.d.ts
 lib/supabaseConfig.ts
 
 # local supabase dev setup — not part of the app
-/supabase/
-
+/supabase/*
+!/supabase/migrations/
+!/supabase/migrations/**

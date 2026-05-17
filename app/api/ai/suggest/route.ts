@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
       if (conversation.store_id) {
         const { data: config, error: configErr } = await supabase
           .from('store_ai_config')
-          .select('store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions')
+          .select('store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions, custom_guardrails')
           .eq('store_id', conversation.store_id)
           .eq('organization_id', ORG_ID)
           .maybeSingle()

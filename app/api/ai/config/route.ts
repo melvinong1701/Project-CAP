@@ -83,8 +83,14 @@ export async function POST(req: NextRequest) {
       return jsonError('storeId, storeName, tone, primaryLanguage, returnPolicy, shippingPolicy, and customInstructions are required', 400)
     }
 
-    const customGuardrails = Array.isArray(body.customGuardrails)
-      ? (body.customGuardrails as unknown[]).filter((g): g is string => typeof g === 'string').slice(0, 20)
+    const rawGuardrails = body.customGuardrails
+    if (rawGuardrails !== undefined) {
+      if (!Array.isArray(rawGuardrails) || (rawGuardrails as unknown[]).some(g => typeof g !== 'string')) {
+        return jsonError('customGuardrails must be an array of strings', 400)
+      }
+    }
+    const customGuardrails = rawGuardrails !== undefined
+      ? (rawGuardrails as string[]).slice(0, 20)
       : []
 
     const supabase = getSupabase()
