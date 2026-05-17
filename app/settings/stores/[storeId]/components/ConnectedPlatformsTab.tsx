@@ -83,10 +83,14 @@ function PlatformCard({
   item,
   onSelect,
   onConnectPlaceholder,
+  onDisconnect,
+  isDisconnecting,
 }: {
   item: PlatformWithConnection
   onSelect: () => void
   onConnectPlaceholder: () => void
+  onDisconnect: () => void
+  isDisconnecting: boolean
 }) {
   const { platform, connection } = item
   const connected = Boolean(connection)
@@ -147,11 +151,14 @@ function PlatformCard({
         {connected ? (
           <button
             type="button"
-            disabled
-            title="Contact support to disconnect"
-            className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-300"
+            disabled={isDisconnecting}
+            onClick={event => {
+              event.stopPropagation()
+              onDisconnect()
+            }}
+            className="rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-500 transition-colors hover:bg-red-50 disabled:opacity-40"
           >
-            Disconnect
+            {isDisconnecting ? 'Disconnecting...' : 'Disconnect'}
           </button>
         ) : platform.connectAvailable ? (
           <button
@@ -182,10 +189,14 @@ function PlatformDrawer({
   item,
   onClose,
   onConnectPlaceholder,
+  onDisconnect,
+  isDisconnecting,
 }: {
   item: PlatformWithConnection
   onClose: () => void
   onConnectPlaceholder: () => void
+  onDisconnect: () => void
+  isDisconnecting: boolean
 }) {
   const { platform, connection } = item
   const connected = Boolean(connection)
@@ -264,11 +275,11 @@ function PlatformDrawer({
           {connected ? (
             <button
               type="button"
-              disabled
-              title="Contact support to disconnect"
-              className="w-full rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-300"
+              disabled={isDisconnecting}
+              onClick={onDisconnect}
+              className="w-full rounded-xl border border-red-200 py-2.5 text-sm font-semibold text-red-500 transition-colors hover:bg-red-50 disabled:opacity-40"
             >
-              Disconnect
+              {isDisconnecting ? 'Disconnecting...' : 'Disconnect'}
             </button>
           ) : platform.connectAvailable ? (
             <button
@@ -299,6 +310,8 @@ export default function ConnectedPlatformsTab({ storeId }: ConnectedPlatformsTab
   const [error, setError] = useState<string | null>(null)
   const [selectedPlatformId, setSelectedPlatformId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [disconnecting, setDisconnecting] = useState<string | null>(null)
+  const [confirmDisconnect, setConfirmDisconnect] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -352,6 +365,32 @@ export default function ConnectedPlatformsTab({ storeId }: ConnectedPlatformsTab
     window.setTimeout(() => setNotice(null), 3500)
   }
 
+  const handleDisconnect = async (platformId: string) => {
+    setDisconnecting(platformId)
+    setConfirmDisconnect(null)
+    setError(null)
+
+    try {
+      const res = await fetch(
+        `/api/stores/${encodeURIComponent(storeId)}/platforms/${encodeURIComponent(platformId)}`,
+        { method: 'DELETE' }
+      )
+
+      if (!res.ok) {
+        const data = await res.json() as { error?: string }
+        setError(data.error ?? 'Failed to disconnect platform')
+        return
+      }
+
+      setConnections(prev => prev.filter(connection => connection.platform_id !== platformId))
+      setSelectedPlatformId(null)
+    } catch {
+      setError('Could not disconnect platform. Please try again.')
+    } finally {
+      setDisconnecting(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-48 items-center justify-center">
@@ -376,6 +415,34 @@ export default function ConnectedPlatformsTab({ storeId }: ConnectedPlatformsTab
         </div>
       )}
 
+      {confirmDisconnect && (() => {
+        const platformLabel = PLATFORMS.find(platform => platform.id === confirmDisconnect)?.label ?? confirmDisconnect
+
+        return (
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3">
+            <p className="text-sm text-red-800">
+              Disconnect <span className="font-semibold">{platformLabel}</span>? Messages will stop flowing into CAP immediately.
+            </p>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDisconnect(null)}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-red-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDisconnect(confirmDisconnect)}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700"
+              >
+                Disconnect
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {platformItems.map(item => (
           <PlatformCard
@@ -383,6 +450,8 @@ export default function ConnectedPlatformsTab({ storeId }: ConnectedPlatformsTab
             item={item}
             onSelect={() => setSelectedPlatformId(item.platform.id)}
             onConnectPlaceholder={showConnectPlaceholder}
+            onDisconnect={() => setConfirmDisconnect(item.platform.id)}
+            isDisconnecting={disconnecting === item.platform.id}
           />
         ))}
       </div>
@@ -392,6 +461,11 @@ export default function ConnectedPlatformsTab({ storeId }: ConnectedPlatformsTab
           item={selectedItem}
           onClose={() => setSelectedPlatformId(null)}
           onConnectPlaceholder={showConnectPlaceholder}
+          onDisconnect={() => {
+            setConfirmDisconnect(selectedItem.platform.id)
+            setSelectedPlatformId(null)
+          }}
+          isDisconnecting={disconnecting === selectedItem.platform.id}
         />
       )}
     </div>
