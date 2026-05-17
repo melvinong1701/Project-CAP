@@ -535,6 +535,7 @@ export default function Home() {
           lastMessage: message.content,
           lastMessageAt: message.timestamp,
           isRead: true,
+          aiSuggestion: undefined,
         }
       })
     )
@@ -551,6 +552,23 @@ export default function Home() {
         body: JSON.stringify({ conversationId: convId, text: message.content }),
       })
     }
+
+    await supabase
+      .from('conversations')
+      .update({ ai_suggestion: null })
+      .eq('id', convId)
+      .eq('organization_id', ORG_ID)
+  }
+
+  const handleClearAi = async (convId: string) => {
+    setConversations(prev =>
+      prev.map(c => c.id === convId ? { ...c, aiSuggestion: undefined } : c)
+    )
+    await supabase
+      .from('conversations')
+      .update({ ai_suggestion: null })
+      .eq('id', convId)
+      .eq('organization_id', ORG_ID)
   }
 
   const handleDismissAi = async (convId: string) => {
@@ -641,6 +659,7 @@ export default function Home() {
           onSendMessage={handleSendMessage}
           onDismissAi={handleDismissAi}
           onShowAi={handleShowAi}
+          onClearAi={handleClearAi}
         />
       ) : conversations.length === 0 ? (
         /* ── Empty state: no conversations yet ── */

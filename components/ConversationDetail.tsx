@@ -14,6 +14,7 @@ interface ConversationDetailProps {
   onSendMessage: (convId: string, message: Message) => void
   onDismissAi: (convId: string) => void
   onShowAi: (convId: string) => void
+  onClearAi: (convId: string) => void
 }
 
 export function ConversationDetail({
@@ -22,6 +23,7 @@ export function ConversationDetail({
   onSendMessage,
   onDismissAi,
   onShowAi,
+  onClearAi,
 }: ConversationDetailProps) {
   const [replyValue, setReplyValue] = useState('')
   const [showCustomerPanel, setShowCustomerPanel] = useState(true)
@@ -56,7 +58,7 @@ export function ConversationDetail({
     }
     onSendMessage(conversation.id, newMessage)
     onMarkRead(conversation.id)
-    onDismissAi(conversation.id)
+    onClearAi(conversation.id)
   }
 
   const handleEditAi = (text: string) => {
