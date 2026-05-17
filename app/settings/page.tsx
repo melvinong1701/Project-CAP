@@ -6,7 +6,7 @@ import {
   ArrowLeft, Store, Bot, Bell, Users, CreditCard,
   Check, X, Plus, Mail, Eye, ChevronDown, ChevronRight,
   Crown, UserCog, MessageSquare, Trash2,
-  AlertCircle, Loader2,
+  AlertCircle, Loader2, Lock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -43,11 +43,64 @@ interface StoreAiConfigFields {
   returnPolicy: string
   shippingPolicy: string
   commonFaqs: string
-  alwaysEscalateIf: string
-  neverDiscuss: string
-  signature: string
-  languageBlocklist: string
+  customGuardrails: string[]
 }
+
+// ─── Guardrails ──────────────────────────────────────────────────────────────
+
+interface PlatformGuardrail {
+  id: string
+  label: string
+  description: string
+}
+
+const PLATFORM_GUARDRAILS_DISPLAY: PlatformGuardrail[] = [
+  {
+    id: 'ai_disclosure',
+    label: 'AI disclosure',
+    description: 'If a customer directly asks whether they\'re speaking to a bot or AI, the assistant will answer honestly and never claim to be human.',
+  },
+  {
+    id: 'no_fabricated_orders',
+    label: 'No fabricated order data',
+    description: 'The AI will never state order statuses, tracking numbers, or delivery dates unless they appear verbatim in the conversation.',
+  },
+  {
+    id: 'no_payment_data',
+    label: 'No payment data',
+    description: 'The AI will never ask for or repeat payment details, card numbers, bank account information, or passwords.',
+  },
+  {
+    id: 'no_refunds',
+    label: 'No refund or compensation promises',
+    description: 'The AI will never offer, promise, or approve refunds, replacements, discounts, or compensation. These are always escalated to a human.',
+  },
+  {
+    id: 'no_pricing_commits',
+    label: 'No pricing commitments',
+    description: 'The AI will never commit to a price not already confirmed in the conversation.',
+  },
+  {
+    id: 'no_competitors',
+    label: 'No competitor mentions',
+    description: 'The AI will not discuss competitors by name or make comparative claims about other brands or platforms.',
+  },
+  {
+    id: 'language_match',
+    label: 'Language matching',
+    description: 'The AI always replies in the language the customer used. This cannot be changed.',
+  },
+  {
+    id: 'escalation_triggers',
+    label: 'Mandatory escalation triggers',
+    description: 'The AI flags for human review when: a customer asks to speak to a human or manager, mentions legal action or regulators, is abusive or threatening, shows signs of fraud, or the same issue appears 3+ times without resolution.',
+  },
+  {
+    id: 'prompt_protection',
+    label: 'Prompt injection protection',
+    description: 'If a customer attempts to override or rewrite the AI\'s instructions (e.g. "ignore previous instructions"), the message is treated as a normal support query and flagged for human review.',
+  },
+]
 
 const aiSettingsStorageKey = 'cap_ai_settings'
 
@@ -98,10 +151,7 @@ const defaultStoreAiConfigFields: StoreAiConfigFields = {
   returnPolicy: '',
   shippingPolicy: '',
   commonFaqs: '',
-  alwaysEscalateIf: '',
-  neverDiscuss: '',
-  signature: '',
-  languageBlocklist: '',
+  customGuardrails: [],
 }
 
 const clampNumber = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
@@ -119,10 +169,6 @@ const customInstructionSections = [
   { label: 'Brand voice', field: 'brandVoice' },
   { label: 'What we sell', field: 'whatWeSell' },
   { label: 'Common FAQs', field: 'commonFaqs' },
-  { label: 'Always escalate if', field: 'alwaysEscalateIf' },
-  { label: 'Never discuss', field: 'neverDiscuss' },
-  { label: 'Sign-off', field: 'signature' },
-  { label: 'Language blocklist', field: 'languageBlocklist' },
 ] as const
 
 interface ApiStoreAiConfigRow {
@@ -130,6 +176,7 @@ interface ApiStoreAiConfigRow {
   return_policy: string | null
   shipping_policy: string | null
   custom_instructions: string | null
+  custom_guardrails: string[] | null
 }
 
 function parseStoredAiSettings(value: unknown): AiSettings {
@@ -162,17 +209,13 @@ function parseStoredAiSettings(value: unknown): AiSettings {
 
 function parseCustomInstructions(customInstructions: string | null | undefined): Pick<
   StoreAiConfigFields,
-  'brandVoice' | 'whatWeSell' | 'commonFaqs' | 'alwaysEscalateIf' | 'neverDiscuss' | 'signature' | 'languageBlocklist'
+  'brandVoice' | 'whatWeSell' | 'commonFaqs'
 > {
   const text = (customInstructions ?? '').replace(/\r\n/g, '\n')
   const fields = {
     brandVoice: '',
     whatWeSell: '',
     commonFaqs: '',
-    alwaysEscalateIf: '',
-    neverDiscuss: '',
-    signature: '',
-    languageBlocklist: '',
   }
 
   customInstructionSections.forEach(({ label, field }) => {
@@ -206,6 +249,7 @@ function deserializeAiConfig(row: ApiStoreAiConfigRow | null): StoreAiConfigFiel
     replyTone,
     returnPolicy: row.return_policy ?? '',
     shippingPolicy: row.shipping_policy ?? '',
+    customGuardrails: Array.isArray(row.custom_guardrails) ? row.custom_guardrails : [],
   }
 }
 
@@ -215,10 +259,6 @@ function serializeAiConfig(fields: StoreAiConfigFields, store: StoreRecord) {
   if (fields.brandVoice.trim()) parts.push(`Brand voice:\n${fields.brandVoice.trim()}`)
   if (fields.whatWeSell.trim()) parts.push(`What we sell:\n${fields.whatWeSell.trim()}`)
   if (fields.commonFaqs.trim()) parts.push(`Common FAQs:\n${fields.commonFaqs.trim()}`)
-  if (fields.alwaysEscalateIf.trim()) parts.push(`Always escalate if:\n${fields.alwaysEscalateIf.trim()}`)
-  if (fields.neverDiscuss.trim()) parts.push(`Never discuss:\n${fields.neverDiscuss.trim()}`)
-  if (fields.signature.trim()) parts.push(`Sign-off:\n${fields.signature.trim()}`)
-  if (fields.languageBlocklist.trim()) parts.push(`Language blocklist:\n${fields.languageBlocklist.trim()}`)
 
   return {
     storeId: store.id,
@@ -228,6 +268,7 @@ function serializeAiConfig(fields: StoreAiConfigFields, store: StoreRecord) {
     returnPolicy: fields.returnPolicy,
     shippingPolicy: fields.shippingPolicy,
     customInstructions: parts.join('\n\n'),
+    customGuardrails: fields.customGuardrails,
   }
 }
 
@@ -1147,6 +1188,9 @@ export default function SettingsPage() {
   const [storeAiConfigSaving, setStoreAiConfigSaving] = useState(false)
   const [storeAiSaved, setStoreAiSaved] = useState(false)
   const [storeAiConfigError, setStoreAiConfigError] = useState<string | null>(null)
+  const [guardrailDraft, setGuardrailDraft] = useState('')
+  const [guardrailChecking, setGuardrailChecking] = useState(false)
+  const [guardrailError, setGuardrailError] = useState<string | null>(null)
 
   const selectedStore = stores.find(s => s.id === selectedStoreId) ?? null
 
@@ -1374,6 +1418,51 @@ export default function SettingsPage() {
     } finally {
       setStoreAiConfigSaving(false)
     }
+  }
+
+  const handleAddGuardrail = async () => {
+    const text = guardrailDraft.trim()
+    if (!text) return
+
+    setGuardrailChecking(true)
+    setGuardrailError(null)
+
+    try {
+      const res = await fetch('/api/ai/guardrail-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposed: text }),
+      })
+      const data = await res.json() as { ok?: boolean; reason?: string | null; error?: string }
+
+      if (!res.ok || data.error) {
+        setGuardrailError('Could not verify this guardrail. Please try again.')
+        return
+      }
+
+      if (!data.ok) {
+        setGuardrailError(data.reason ?? 'This guardrail conflicts with platform rules and cannot be added.')
+        return
+      }
+
+      setStoreAiConfig(prev => ({
+        ...prev,
+        customGuardrails: [...prev.customGuardrails, text],
+      }))
+      setGuardrailDraft('')
+      setGuardrailError(null)
+    } catch {
+      setGuardrailError('Network error. Please try again.')
+    } finally {
+      setGuardrailChecking(false)
+    }
+  }
+
+  const handleRemoveGuardrail = (index: number) => {
+    setStoreAiConfig(prev => ({
+      ...prev,
+      customGuardrails: prev.customGuardrails.filter((_, i) => i !== index),
+    }))
   }
 
   return (
@@ -1670,42 +1759,79 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="bg-white rounded-2xl border border-gray-100 p-6">
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">
-                        Operating rules
-                      </p>
-                      <div className="space-y-5">
-                        <AiTextArea
-                          id="store-ai-always-escalate-if"
-                          label="Always escalate if"
-                          hint={'Describe situations where the AI must hand off to a human. E.g. "Refund dispute", "Order value over SGD 500", "Message contains \'lawyer\'".'}
-                          value={storeAiConfig.alwaysEscalateIf}
-                          rows={3}
-                          onChange={value => updateStoreAiConfig('alwaysEscalateIf', value)}
-                        />
-                        <AiTextArea
-                          id="store-ai-never-discuss"
-                          label="Never discuss"
-                          hint="Topics the AI should refuse and pass to a human agent."
-                          value={storeAiConfig.neverDiscuss}
-                          rows={3}
-                          onChange={value => updateStoreAiConfig('neverDiscuss', value)}
-                        />
-                        <AiTextArea
-                          id="store-ai-signature"
-                          label="Sign-off"
-                          hint={'Optional text appended to every AI reply. E.g. "- The TechGear Team"'}
-                          value={storeAiConfig.signature}
-                          rows={3}
-                          onChange={value => updateStoreAiConfig('signature', value)}
-                        />
-                        <AiTextArea
-                          id="store-ai-language-blocklist"
-                          label="Language blocklist"
-                          hint="Words or phrases the AI must never include in a reply. Comma-separated."
-                          value={storeAiConfig.languageBlocklist}
-                          rows={3}
-                          onChange={value => updateStoreAiConfig('languageBlocklist', value)}
-                        />
+                      {/* Section A — Platform guardrails */}
+                      <div className="flex items-center gap-2 mb-1">
+                        <Lock className="w-3.5 h-3.5 text-indigo-500" />
+                        <p className="text-xs font-semibold text-gray-900">Platform guardrails</p>
+                      </div>
+                      <p className="text-xs text-gray-400 mb-4">Set by Project CAP · Cannot be changed</p>
+                      <div className="rounded-xl bg-indigo-50/40 border border-indigo-100 divide-y divide-indigo-100">
+                        {PLATFORM_GUARDRAILS_DISPLAY.map(guardrail => (
+                          <div key={guardrail.id} className="flex items-start justify-between gap-4 px-4 py-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900">{guardrail.label}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">{guardrail.description}</p>
+                            </div>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 flex-shrink-0 mt-0.5">
+                              <Lock className="w-2.5 h-2.5" />
+                              Protected
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Section B — Custom guardrails */}
+                      <div className="border-t border-gray-100 mt-6 pt-6">
+                        <p className="text-xs font-semibold text-gray-900 mb-1">Your guardrails</p>
+                        <p className="text-xs text-gray-400 mb-4">Additive rules screened against platform guardrails before saving</p>
+
+                        {storeAiConfig.customGuardrails.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic mb-4">No custom guardrails added yet.</p>
+                        ) : (
+                          <div className="space-y-2 mb-4">
+                            {storeAiConfig.customGuardrails.map((g, i) => (
+                              <div key={i} className="flex items-start gap-3 px-4 py-3 rounded-xl border border-gray-100 bg-gray-50">
+                                <p className="text-sm text-gray-700 flex-1">{g}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveGuardrail(i)}
+                                  className="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 mt-0.5"
+                                  title="Remove guardrail"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {storeAiConfig.customGuardrails.length < 20 && (
+                          <div className="space-y-2">
+                            <textarea
+                              value={guardrailDraft}
+                              rows={2}
+                              onChange={e => setGuardrailDraft(e.target.value)}
+                              placeholder='E.g. "Always escalate if the customer mentions they are a business buyer."'
+                              maxLength={500}
+                              className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none placeholder:text-gray-300"
+                            />
+                            {guardrailError && (
+                              <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 rounded-lg p-3">
+                                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                                <p>{guardrailError}</p>
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={handleAddGuardrail}
+                              disabled={guardrailChecking || !guardrailDraft.trim()}
+                              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-semibold transition-colors"
+                            >
+                              {guardrailChecking && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                              {guardrailChecking ? 'Checking…' : 'Add guardrail'}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 

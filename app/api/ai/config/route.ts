@@ -11,6 +11,7 @@ interface StoreAiConfigBody {
   returnPolicy?: unknown
   shippingPolicy?: unknown
   customInstructions?: unknown
+  customGuardrails?: unknown
 }
 
 function getSupabase() {
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabase()
     const { data, error } = await supabase
       .from('store_ai_config')
-      .select('id, organization_id, store_id, store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions, created_at, updated_at')
+      .select('id, organization_id, store_id, store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions, custom_guardrails, created_at, updated_at')
       .eq('store_id', storeId)
       .eq('organization_id', ORG_ID)
       .maybeSingle()
@@ -82,6 +83,10 @@ export async function POST(req: NextRequest) {
       return jsonError('storeId, storeName, tone, primaryLanguage, returnPolicy, shippingPolicy, and customInstructions are required', 400)
     }
 
+    const customGuardrails = Array.isArray(body.customGuardrails)
+      ? (body.customGuardrails as unknown[]).filter((g): g is string => typeof g === 'string').slice(0, 20)
+      : []
+
     const supabase = getSupabase()
     const { error } = await supabase
       .from('store_ai_config')
@@ -95,6 +100,7 @@ export async function POST(req: NextRequest) {
           return_policy: returnPolicy,
           shipping_policy: shippingPolicy,
           custom_instructions: customInstructions,
+          custom_guardrails: customGuardrails,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'store_id' }
