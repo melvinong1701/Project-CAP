@@ -51,7 +51,6 @@ export interface SuggestReplyInput {
   customerName?: string
   conversationHistory?: ConversationContextMessage[]
   retrievedContext?: RetrievedContextSnippet[]
-  sellerToneRules?: string[]
   storeConfig?: StoreConfig | null
 }
 
@@ -145,7 +144,7 @@ function buildStoreContext(config: StoreConfig | null): string {
   return lines.filter(Boolean).join('\n')
 }
 
-export interface CachedPreprocessingInput {
+export interface RawPreprocessingOutput {
   language: unknown
   intent: unknown
   sentiment: unknown
@@ -280,7 +279,7 @@ async function callOpenAiMessagesJson(params: {
   return parseJsonObject(content)
 }
 
-export function buildPreprocessingResult(input: CachedPreprocessingInput): PreprocessingResult {
+export function buildPreprocessingResult(input: RawPreprocessingOutput): PreprocessingResult {
   const base = {
     language: asString(input.language, 'unknown'),
     intent: asIntent(input.intent),
@@ -302,7 +301,6 @@ export async function preprocessMessage(input: SuggestReplyInput): Promise<Prepr
     'You are the Queue 1 preprocessing router for Project Cap.',
     'Return JSON only.',
     'Classify this inbound marketplace support message before reply generation.',
-    'gpt-5.4-nano is used here for cheap, fast, structured preprocessing on 100% of inbound messages.',
     'Use only these intents: order_status, shipping, product_question, returns, refund, dispute, pricing, availability, other.',
     'Use sentiment: positive, neutral, negative.',
     'Use urgency: low, medium, high.',
@@ -400,48 +398,19 @@ export async function suggestReply(
   preprocessingOverride?: PreprocessingResult
 ): Promise<SuggestReplyResult> {
   const preprocessing = preprocessingOverride ?? await preprocessMessage(input)
-  const initialReplyModel = preprocessing.shouldEscalate
+  const model = preprocessing.shouldEscalate
     ? AI_MODEL_ROUTER.replyEscalation
     : AI_MODEL_ROUTER.replyDefault
 
-  const initialSuggestion = await runReplyGeneration({
+  const result = await runReplyGeneration({
     input,
     preprocessing,
-    model: initialReplyModel,
+    model,
     escalationReason: preprocessing.escalationReason,
   })
 
-  if (initialReplyModel === AI_MODEL_ROUTER.replyDefault && initialSuggestion.confidence === 'low') {
-    const escalationReason = 'mini reply confidence=low'
-    const escalatedSuggestion = await runReplyGeneration({
-      input,
-      preprocessing,
-      model: AI_MODEL_ROUTER.replyEscalation,
-      escalationReason,
-    })
-
-    return {
-      text: escalatedSuggestion.text,
-      confidence: escalatedSuggestion.confidence,
-    }
-  }
-
   return {
-    text: initialSuggestion.text,
-    confidence: initialSuggestion.confidence,
+    text: result.text,
+    confidence: result.confidence,
   }
-}
-
-export async function getAiSuggestion(
-  latestMessage: string,
-  history: MessageContext[],
-  storeConfig: StoreConfig | null
-): Promise<{ text: string; confidence: 'high' | 'medium' | 'low' }> {
-  return suggestReply({
-    organizationId: '',
-    channel: 'telegram',
-    latestMessage,
-    conversationHistory: history,
-    storeConfig,
-  })
 }

@@ -34,6 +34,10 @@ interface AiSettings {
   languageBehaviour: LanguageBehaviour
   replyDelayEnabled: boolean
   replyDelaySeconds: number
+}
+
+interface StoreAiConfigFields {
+  replyTone: ReplyTone
   brandVoice: string
   whatWeSell: string
   returnPolicy: string
@@ -85,6 +89,10 @@ const defaultAiSettings: AiSettings = {
   languageBehaviour: 'match_buyer',
   replyDelayEnabled: false,
   replyDelaySeconds: 10,
+}
+
+const defaultStoreAiConfigFields: StoreAiConfigFields = {
+  replyTone: 'friendly',
   brandVoice: '',
   whatWeSell: '',
   returnPolicy: '',
@@ -101,14 +109,28 @@ const clampNumber = (value: number, min: number, max: number) => Math.min(max, M
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
 
-const stringValue = (value: unknown, fallback: string) =>
-  typeof value === 'string' ? value : fallback
-
 const booleanValue = (value: unknown, fallback: boolean) =>
   typeof value === 'boolean' ? value : fallback
 
 const numberValue = (value: unknown, fallback: number, min: number, max: number) =>
   typeof value === 'number' && Number.isFinite(value) ? clampNumber(value, min, max) : fallback
+
+const customInstructionSections = [
+  { label: 'Brand voice', field: 'brandVoice' },
+  { label: 'What we sell', field: 'whatWeSell' },
+  { label: 'Common FAQs', field: 'commonFaqs' },
+  { label: 'Always escalate if', field: 'alwaysEscalateIf' },
+  { label: 'Never discuss', field: 'neverDiscuss' },
+  { label: 'Sign-off', field: 'signature' },
+  { label: 'Language blocklist', field: 'languageBlocklist' },
+] as const
+
+interface ApiStoreAiConfigRow {
+  tone: string | null
+  return_policy: string | null
+  shipping_policy: string | null
+  custom_instructions: string | null
+}
 
 function parseStoredAiSettings(value: unknown): AiSettings {
   if (!isRecord(value)) return defaultAiSettings
@@ -135,15 +157,77 @@ function parseStoredAiSettings(value: unknown): AiSettings {
     languageBehaviour,
     replyDelayEnabled: booleanValue(value.replyDelayEnabled, defaultAiSettings.replyDelayEnabled),
     replyDelaySeconds: numberValue(value.replyDelaySeconds, defaultAiSettings.replyDelaySeconds, 5, 60),
-    brandVoice: stringValue(value.brandVoice, defaultAiSettings.brandVoice),
-    whatWeSell: stringValue(value.whatWeSell, defaultAiSettings.whatWeSell),
-    returnPolicy: stringValue(value.returnPolicy, defaultAiSettings.returnPolicy),
-    shippingPolicy: stringValue(value.shippingPolicy, defaultAiSettings.shippingPolicy),
-    commonFaqs: stringValue(value.commonFaqs, defaultAiSettings.commonFaqs),
-    alwaysEscalateIf: stringValue(value.alwaysEscalateIf, defaultAiSettings.alwaysEscalateIf),
-    neverDiscuss: stringValue(value.neverDiscuss, defaultAiSettings.neverDiscuss),
-    signature: stringValue(value.signature, defaultAiSettings.signature),
-    languageBlocklist: stringValue(value.languageBlocklist, defaultAiSettings.languageBlocklist),
+  }
+}
+
+function parseCustomInstructions(customInstructions: string | null | undefined): Pick<
+  StoreAiConfigFields,
+  'brandVoice' | 'whatWeSell' | 'commonFaqs' | 'alwaysEscalateIf' | 'neverDiscuss' | 'signature' | 'languageBlocklist'
+> {
+  const text = (customInstructions ?? '').replace(/\r\n/g, '\n')
+  const fields = {
+    brandVoice: '',
+    whatWeSell: '',
+    commonFaqs: '',
+    alwaysEscalateIf: '',
+    neverDiscuss: '',
+    signature: '',
+    languageBlocklist: '',
+  }
+
+  customInstructionSections.forEach(({ label, field }) => {
+    const header = `${label}:\n`
+    const startIndex = text.indexOf(header)
+    if (startIndex === -1) return
+
+    const contentStart = startIndex + header.length
+    const nextHeaderIndex = customInstructionSections.reduce<number | null>((nearest, section) => {
+      const candidate = text.indexOf(`${section.label}:\n`, contentStart)
+      if (candidate === -1) return nearest
+      return nearest === null || candidate < nearest ? candidate : nearest
+    }, null)
+
+    fields[field] = text.slice(contentStart, nextHeaderIndex ?? undefined).trim()
+  })
+
+  return fields
+}
+
+function deserializeAiConfig(row: ApiStoreAiConfigRow | null): StoreAiConfigFields {
+  if (!row) return defaultStoreAiConfigFields
+
+  const replyTone = ['professional', 'friendly', 'casual'].includes(String(row.tone))
+    ? row.tone as ReplyTone
+    : defaultStoreAiConfigFields.replyTone
+
+  return {
+    ...defaultStoreAiConfigFields,
+    ...parseCustomInstructions(row.custom_instructions),
+    replyTone,
+    returnPolicy: row.return_policy ?? '',
+    shippingPolicy: row.shipping_policy ?? '',
+  }
+}
+
+function serializeAiConfig(fields: StoreAiConfigFields, store: StoreRecord) {
+  const parts: string[] = []
+
+  if (fields.brandVoice.trim()) parts.push(`Brand voice:\n${fields.brandVoice.trim()}`)
+  if (fields.whatWeSell.trim()) parts.push(`What we sell:\n${fields.whatWeSell.trim()}`)
+  if (fields.commonFaqs.trim()) parts.push(`Common FAQs:\n${fields.commonFaqs.trim()}`)
+  if (fields.alwaysEscalateIf.trim()) parts.push(`Always escalate if:\n${fields.alwaysEscalateIf.trim()}`)
+  if (fields.neverDiscuss.trim()) parts.push(`Never discuss:\n${fields.neverDiscuss.trim()}`)
+  if (fields.signature.trim()) parts.push(`Sign-off:\n${fields.signature.trim()}`)
+  if (fields.languageBlocklist.trim()) parts.push(`Language blocklist:\n${fields.languageBlocklist.trim()}`)
+
+  return {
+    storeId: store.id,
+    storeName: store.name,
+    tone: fields.replyTone,
+    primaryLanguage: store.language,
+    returnPolicy: fields.returnPolicy,
+    shippingPolicy: fields.shippingPolicy,
+    customInstructions: parts.join('\n\n'),
   }
 }
 
@@ -1057,8 +1141,53 @@ export default function SettingsPage() {
   const [storesView, setStoresView] = useState<'list' | 'add' | 'platforms'>('list')
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
   const [connectingPlatform, setConnectingPlatform] = useState<PlatformId | null>(null)
+  const [storeTab, setStoreTab] = useState<'channels' | 'ai'>('channels')
+  const [storeAiConfig, setStoreAiConfig] = useState<StoreAiConfigFields>(defaultStoreAiConfigFields)
+  const [storeAiConfigLoading, setStoreAiConfigLoading] = useState(false)
+  const [storeAiConfigSaving, setStoreAiConfigSaving] = useState(false)
+  const [storeAiSaved, setStoreAiSaved] = useState(false)
+  const [storeAiConfigError, setStoreAiConfigError] = useState<string | null>(null)
 
   const selectedStore = stores.find(s => s.id === selectedStoreId) ?? null
+
+  useEffect(() => {
+    if (storesView !== 'platforms' || !selectedStore) return undefined
+
+    let cancelled = false
+    const storeId = selectedStore.id
+
+    async function fetchStoreAiConfig() {
+      setStoreAiConfigLoading(true)
+      setStoreAiConfigError(null)
+
+      try {
+        const res = await fetch(`/api/ai/config?storeId=${encodeURIComponent(storeId)}`)
+        if (!res.ok) {
+          throw new Error('Failed to load AI context')
+        }
+
+        const { data } = await res.json() as { data: ApiStoreAiConfigRow | null }
+        if (!cancelled) {
+          setStoreAiConfig(deserializeAiConfig(data))
+        }
+      } catch {
+        if (!cancelled) {
+          setStoreAiConfig(defaultStoreAiConfigFields)
+          setStoreAiConfigError('Could not load AI context for this store.')
+        }
+      } finally {
+        if (!cancelled) {
+          setStoreAiConfigLoading(false)
+        }
+      }
+    }
+
+    fetchStoreAiConfig()
+
+    return () => {
+      cancelled = true
+    }
+  }, [storesView, selectedStore])
 
   const handleConnect = async (platformId: PlatformId, account: string) => {
     if (!selectedStoreId) return
@@ -1124,6 +1253,10 @@ export default function SettingsPage() {
 
   const handleSelectStore = (storeId: string) => {
     setSelectedStoreId(storeId)
+    setStoreTab('channels')
+    setStoreAiConfig(defaultStoreAiConfigFields)
+    setStoreAiSaved(false)
+    setAiSaved(false)
     setStoresView('platforms')
   }
 
@@ -1132,7 +1265,7 @@ export default function SettingsPage() {
   const [showInvite, setShowInvite] = useState(false)
   const [showPermissions, setShowPermissions] = useState(false)
 
-  // AI settings state — persisted locally until the Supabase table exists.
+  // AI behaviour state — persisted locally for workspace-wide controls.
   const [aiSettings, setAiSettings] = useState<AiSettings>(defaultAiSettings)
   const [showAdvancedConfidence, setShowAdvancedConfidence] = useState(false)
   const [aiSaved, setAiSaved] = useState(false)
@@ -1154,6 +1287,13 @@ export default function SettingsPage() {
     const timeoutId = window.setTimeout(() => setAiSaved(false), 2000)
     return () => window.clearTimeout(timeoutId)
   }, [aiSaved])
+
+  useEffect(() => {
+    if (!storeAiSaved) return undefined
+
+    const timeoutId = window.setTimeout(() => setStoreAiSaved(false), 2000)
+    return () => window.clearTimeout(timeoutId)
+  }, [storeAiSaved])
 
   const handleInvite = (email: string, role: Role) => {
     const name = email.split('@')[0]
@@ -1177,6 +1317,10 @@ export default function SettingsPage() {
 
   const updateAiSettings = <Key extends keyof AiSettings>(key: Key, value: AiSettings[Key]) => {
     setAiSettings(prev => ({ ...prev, [key]: value }))
+  }
+
+  const updateStoreAiConfig = <Key extends keyof StoreAiConfigFields>(key: Key, value: StoreAiConfigFields[Key]) => {
+    setStoreAiConfig(prev => ({ ...prev, [key]: value }))
   }
 
   const handleConfidencePresetChange = (preset: ConfidencePreset) => {
@@ -1205,6 +1349,31 @@ export default function SettingsPage() {
   const handleSaveAiSettings = () => {
     window.localStorage.setItem(aiSettingsStorageKey, JSON.stringify(aiSettings))
     setAiSaved(true)
+  }
+
+  const handleSaveStoreAiConfig = async () => {
+    if (!selectedStore) return
+
+    setStoreAiConfigSaving(true)
+    setStoreAiConfigError(null)
+
+    try {
+      const res = await fetch('/api/ai/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(serializeAiConfig(storeAiConfig, selectedStore)),
+      })
+
+      if (!res.ok) {
+        throw new Error('Failed to save AI context')
+      }
+
+      setStoreAiSaved(true)
+    } catch {
+      setStoreAiConfigError('Could not save AI context. Please try again.')
+    } finally {
+      setStoreAiConfigSaving(false)
+    }
   }
 
   return (
@@ -1333,7 +1502,10 @@ export default function SettingsPage() {
               {/* Breadcrumb */}
               <div className="flex items-center gap-3 mb-8">
                 <button
-                  onClick={() => setStoresView('list')}
+                  onClick={() => {
+                    setStoreTab('channels')
+                    setStoresView('list')
+                  }}
                   className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -1365,29 +1537,196 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="space-y-8">
-                <div>
-                  <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Marketplaces</h2>
-                  <div className="space-y-2">
-                    {marketplaces.map(p => <MarketplaceCard key={p.id} {...p} />)}
-                  </div>
-                </div>
-                <div>
-                  <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Messaging & Social</h2>
-                  <div className="space-y-2">
-                    {messagingPlatforms.map(p => (
-                      <MessagingPlatformCard
-                        key={p.id}
-                        platform={p}
-                        isConnected={!!selectedStore.connectedPlatforms[p.id]}
-                        connectedAccount={selectedStore.connectedPlatforms[p.id] ?? undefined}
-                        onConnect={() => p.connectable && setConnectingPlatform(p.id)}
-                        onDisconnect={() => handleDisconnect(p.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
+              <div className="flex items-center gap-6 mb-6 border-b border-gray-100">
+                {[
+                  { id: 'channels', label: 'Channels' },
+                  { id: 'ai', label: 'AI context' },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setStoreTab(tab.id as 'channels' | 'ai')}
+                    className={cn(
+                      'pb-3 text-sm font-semibold border-b-2 transition-colors',
+                      storeTab === tab.id
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-gray-400 hover:text-gray-700'
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
+
+              {storeTab === 'channels' && (
+                <div className="space-y-8">
+                  <div>
+                    <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Marketplaces</h2>
+                    <div className="space-y-2">
+                      {marketplaces.map(p => <MarketplaceCard key={p.id} {...p} />)}
+                    </div>
+                  </div>
+                  <div>
+                    <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Messaging & Social</h2>
+                    <div className="space-y-2">
+                      {messagingPlatforms.map(p => (
+                        <MessagingPlatformCard
+                          key={p.id}
+                          platform={p}
+                          isConnected={!!selectedStore.connectedPlatforms[p.id]}
+                          connectedAccount={selectedStore.connectedPlatforms[p.id] ?? undefined}
+                          onConnect={() => p.connectable && setConnectingPlatform(p.id)}
+                          onDisconnect={() => handleDisconnect(p.id)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {storeTab === 'ai' && (
+                storeAiConfigLoading ? (
+                  <div className="flex items-center justify-center h-48">
+                    <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {storeAiConfigError && (
+                      <div className="flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        {storeAiConfigError}
+                      </div>
+                    )}
+
+                    <div className="bg-white rounded-2xl border border-gray-100 p-6">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">
+                        Reply tone
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {replyToneOptions.map(option => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => updateStoreAiConfig('replyTone', option.value)}
+                            className={cn(
+                              'rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-colors',
+                              storeAiConfig.replyTone === option.value
+                                ? 'bg-indigo-600 text-white'
+                                : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border border-gray-100 p-6">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">
+                        Business context
+                      </p>
+                      <div className="space-y-5">
+                        <AiTextArea
+                          id="store-ai-brand-voice"
+                          label="Brand voice"
+                          hint={'How do you want to sound? E.g. "Warm but professional. Never use slang. Always end with a call to action."'}
+                          value={storeAiConfig.brandVoice}
+                          rows={3}
+                          onChange={value => updateStoreAiConfig('brandVoice', value)}
+                        />
+                        <AiTextArea
+                          id="store-ai-what-we-sell"
+                          label="What we sell"
+                          hint="Describe your product range so the AI knows what you carry."
+                          value={storeAiConfig.whatWeSell}
+                          rows={3}
+                          onChange={value => updateStoreAiConfig('whatWeSell', value)}
+                        />
+                        <AiTextArea
+                          id="store-ai-return-policy"
+                          label="Return & refund policy"
+                          hint="Paste your standard policy. Per-store overrides coming later."
+                          value={storeAiConfig.returnPolicy}
+                          rows={3}
+                          onChange={value => updateStoreAiConfig('returnPolicy', value)}
+                        />
+                        <AiTextArea
+                          id="store-ai-shipping-policy"
+                          label="Shipping policy"
+                          hint="Your standard shipping terms."
+                          value={storeAiConfig.shippingPolicy}
+                          rows={3}
+                          onChange={value => updateStoreAiConfig('shippingPolicy', value)}
+                        />
+                        <AiTextArea
+                          id="store-ai-common-faqs"
+                          label="Common FAQs"
+                          hint="Questions and answers you get most often. The AI will use these to respond."
+                          value={storeAiConfig.commonFaqs}
+                          rows={5}
+                          onChange={value => updateStoreAiConfig('commonFaqs', value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border border-gray-100 p-6">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">
+                        Operating rules
+                      </p>
+                      <div className="space-y-5">
+                        <AiTextArea
+                          id="store-ai-always-escalate-if"
+                          label="Always escalate if"
+                          hint={'Describe situations where the AI must hand off to a human. E.g. "Refund dispute", "Order value over SGD 500", "Message contains \'lawyer\'".'}
+                          value={storeAiConfig.alwaysEscalateIf}
+                          rows={3}
+                          onChange={value => updateStoreAiConfig('alwaysEscalateIf', value)}
+                        />
+                        <AiTextArea
+                          id="store-ai-never-discuss"
+                          label="Never discuss"
+                          hint="Topics the AI should refuse and pass to a human agent."
+                          value={storeAiConfig.neverDiscuss}
+                          rows={3}
+                          onChange={value => updateStoreAiConfig('neverDiscuss', value)}
+                        />
+                        <AiTextArea
+                          id="store-ai-signature"
+                          label="Sign-off"
+                          hint={'Optional text appended to every AI reply. E.g. "- The TechGear Team"'}
+                          value={storeAiConfig.signature}
+                          rows={3}
+                          onChange={value => updateStoreAiConfig('signature', value)}
+                        />
+                        <AiTextArea
+                          id="store-ai-language-blocklist"
+                          label="Language blocklist"
+                          hint="Words or phrases the AI must never include in a reply. Comma-separated."
+                          value={storeAiConfig.languageBlocklist}
+                          rows={3}
+                          onChange={value => updateStoreAiConfig('languageBlocklist', value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleSaveStoreAiConfig}
+                        disabled={storeAiConfigSaving}
+                        className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-sm font-semibold rounded-xl py-2.5 px-5 transition-colors inline-flex items-center gap-2"
+                      >
+                        {storeAiConfigSaving ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          storeAiSaved && <Check className="w-4 h-4" />
+                        )}
+                        {storeAiSaved ? 'Saved' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              )}
             </>
           )}
 
@@ -1395,9 +1734,10 @@ export default function SettingsPage() {
           {activeSection === 'ai' && (
             <>
               <div className="mb-8">
-                <h1 className="text-lg font-semibold text-gray-900">AI settings</h1>
+                <h1 className="text-lg font-semibold text-gray-900">AI behaviour</h1>
                 <p className="text-sm text-gray-500 mt-1">
-                  Configure how OakChat replies, drafts, and hands off conversations across your stores.
+                  Workspace-wide controls for how AI handles conversations. Store-specific context
+                  (tone, policies, FAQs) is configured per store under Stores → [store name] → AI context.
                 </p>
               </div>
 
@@ -1576,94 +1916,6 @@ export default function SettingsPage() {
                         </div>
                       )}
                     </div>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-2xl border border-gray-100 p-6">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">
-                    Business context
-                  </p>
-                  <div className="space-y-5">
-                    <AiTextArea
-                      id="ai-brand-voice"
-                      label="Brand voice"
-                      hint={'How do you want to sound? E.g. "Warm but professional. Never use slang. Always end with a call to action."'}
-                      value={aiSettings.brandVoice}
-                      rows={3}
-                      onChange={value => updateAiSettings('brandVoice', value)}
-                    />
-                    <AiTextArea
-                      id="ai-what-we-sell"
-                      label="What we sell"
-                      hint="Describe your product range so the AI knows what you carry."
-                      value={aiSettings.whatWeSell}
-                      rows={3}
-                      onChange={value => updateAiSettings('whatWeSell', value)}
-                    />
-                    <AiTextArea
-                      id="ai-return-policy"
-                      label="Return & refund policy"
-                      hint="Paste your standard policy. Per-store overrides coming later."
-                      value={aiSettings.returnPolicy}
-                      rows={3}
-                      onChange={value => updateAiSettings('returnPolicy', value)}
-                    />
-                    <AiTextArea
-                      id="ai-shipping-policy"
-                      label="Shipping policy"
-                      hint="Your standard shipping terms."
-                      value={aiSettings.shippingPolicy}
-                      rows={3}
-                      onChange={value => updateAiSettings('shippingPolicy', value)}
-                    />
-                    <AiTextArea
-                      id="ai-common-faqs"
-                      label="Common FAQs"
-                      hint="Questions and answers you get most often. The AI will use these to respond."
-                      value={aiSettings.commonFaqs}
-                      rows={5}
-                      onChange={value => updateAiSettings('commonFaqs', value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-2xl border border-gray-100 p-6">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">
-                    Operating rules
-                  </p>
-                  <div className="space-y-5">
-                    <AiTextArea
-                      id="ai-always-escalate-if"
-                      label="Always escalate if"
-                      hint={'Describe situations where the AI must hand off to a human. E.g. "Refund dispute", "Order value over SGD 500", "Message contains \'lawyer\'".'}
-                      value={aiSettings.alwaysEscalateIf}
-                      rows={3}
-                      onChange={value => updateAiSettings('alwaysEscalateIf', value)}
-                    />
-                    <AiTextArea
-                      id="ai-never-discuss"
-                      label="Never discuss"
-                      hint="Topics the AI should refuse and pass to a human agent."
-                      value={aiSettings.neverDiscuss}
-                      rows={3}
-                      onChange={value => updateAiSettings('neverDiscuss', value)}
-                    />
-                    <AiTextArea
-                      id="ai-signature"
-                      label="Sign-off"
-                      hint={'Optional text appended to every AI reply. E.g. "- The TechGear Team"'}
-                      value={aiSettings.signature}
-                      rows={3}
-                      onChange={value => updateAiSettings('signature', value)}
-                    />
-                    <AiTextArea
-                      id="ai-language-blocklist"
-                      label="Language blocklist"
-                      hint="Words or phrases the AI must never include in a reply. Comma-separated."
-                      value={aiSettings.languageBlocklist}
-                      rows={3}
-                      onChange={value => updateAiSettings('languageBlocklist', value)}
-                    />
                   </div>
                 </div>
 

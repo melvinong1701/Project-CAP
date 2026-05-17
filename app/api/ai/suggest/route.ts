@@ -17,7 +17,6 @@ interface SuggestRequestBody {
   conversationId?: string
   latestMessage?: string
   retrievedContext?: RetrievedContextSnippet[]
-  sellerToneRules?: string[]
 }
 
 interface ConversationRow {
@@ -139,11 +138,6 @@ export async function POST(req: NextRequest) {
       conversationHistory: history,
       retrievedContext: body.retrievedContext ?? [],
       storeConfig,
-      sellerToneRules: body.sellerToneRules ?? [
-        'Sound helpful, concise, and human.',
-        'Do not overpromise.',
-        'Escalate rather than invent facts when order or policy data is missing.',
-      ],
     }
 
     const preprocessing: PreprocessingResult = await preprocessMessage(suggestInput)
@@ -154,6 +148,9 @@ export async function POST(req: NextRequest) {
       const { error: updateErr } = await supabase
         .from('conversations')
         .update({
+          // Auto-send via the suggestion panel is intentionally disabled until
+          // store knowledge (RAG) is live and confidence scoring is validated.
+          // When ready, replace false with result.autoSent.
           ai_suggestion: {
             text: result.text,
             confidence: result.confidence,
