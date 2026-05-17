@@ -206,7 +206,7 @@ export const PLATFORMS: PlatformDef[] = [
   },
   {
     id: 'meta',
-    label: 'Meta (Facebook & Instagram)',
+    label: 'Meta',
     logo: '/logos/meta.svg',
     color: '#0866FF',
     connectAvailable: false,
