@@ -19,7 +19,7 @@ interface StorePlatformRow {
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!supabaseUrl || !supabaseKey) {
     throw new Error('Supabase credentials not configured — set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel env vars')
   }
@@ -49,6 +49,7 @@ export async function GET() {
         .from('store_platforms')
         .select('store_id, platform_id, account_label')
         .in('store_id', storeIds)
+        .eq('organization_id', ORG_ID)
         .returns<StorePlatformRow[]>()
 
       if (platformsError) {

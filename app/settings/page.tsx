@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import ConnectedPlatformsTab from './stores/[storeId]/components/ConnectedPlatformsTab'
 import {
   ArrowLeft, Store, Bot, Bell, Users, CreditCard,
   Check, X, Plus, Mail, Eye, ChevronDown, ChevronRight,
@@ -273,13 +274,6 @@ function serializeAiConfig(fields: StoreAiConfigFields, store: StoreRecord) {
 }
 
 // ─── Platform data ───────────────────────────────────────────────────────────
-
-const marketplaces = [
-  { id: 'shopee', name: 'Shopee', description: 'SG · MY · TH · ID · PH · VN · TW', color: 'bg-orange-500', letter: 'S' },
-  { id: 'lazada', name: 'Lazada', description: 'SG · MY · TH · ID · PH · VN', color: 'bg-blue-600', letter: 'L' },
-  { id: 'tiktok_shop', name: 'TikTok Shop', description: 'SG · MY · TH · ID · PH · VN', color: 'bg-black', letter: 'T' },
-  { id: 'tokopedia', name: 'Tokopedia', description: 'ID', color: 'bg-green-500', letter: 'T' },
-]
 
 type PlatformId = 'whatsapp' | 'facebook_messenger' | 'instagram' | 'line' | 'telegram' | 'zalo'
 
@@ -737,80 +731,6 @@ function ConnectModal({ platform, storeId, onClose, onConnect }: ConnectModalPro
   )
 }
 
-// ─── Messaging Platform Card ──────────────────────────────────────────────────
-
-interface PlatformCardProps {
-  platform: MessagingPlatform
-  isConnected: boolean
-  connectedAccount?: string
-  onConnect: () => void
-  onDisconnect: () => void
-}
-
-function MessagingPlatformCard({ platform, isConnected, connectedAccount, onConnect, onDisconnect }: PlatformCardProps) {
-  return (
-    <div className={cn(
-      'flex items-center gap-4 px-5 py-4 border rounded-xl bg-white transition-all',
-      isConnected ? 'border-green-200 bg-green-50/30' : 'border-gray-100 hover:border-gray-200 hover:shadow-sm'
-    )}>
-      <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0', platform.color)}>
-        <span className="text-white font-bold text-sm">{platform.letter}</span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900">{platform.name}</p>
-        {isConnected && connectedAccount ? (
-          <p className="text-xs text-green-600 mt-0.5 font-medium">{connectedAccount}</p>
-        ) : (
-          <p className="text-xs text-gray-400 mt-0.5">{platform.description}</p>
-        )}
-      </div>
-      {isConnected ? (
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 px-2.5 py-1 rounded-full">
-            <Check className="w-3 h-3" /> Connected
-          </span>
-          <button
-            onClick={onDisconnect}
-            className="text-xs text-gray-400 hover:text-red-500 transition-colors px-2 py-1 rounded-lg hover:bg-red-50"
-          >
-            Disconnect
-          </button>
-        </div>
-      ) : platform.connectable ? (
-        <button
-          onClick={onConnect}
-          className="text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-full transition-colors flex-shrink-0"
-        >
-          Connect
-        </button>
-      ) : (
-        <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full flex-shrink-0">
-          Coming soon
-        </span>
-      )}
-    </div>
-  )
-}
-
-// ─── Marketplace Card ─────────────────────────────────────────────────────────
-
-function MarketplaceCard({ name, description, color, letter }: { name: string; description: string; color: string; letter: string }) {
-  return (
-    <div className="flex items-center gap-4 px-5 py-4 border border-gray-100 rounded-xl bg-white hover:border-gray-200 hover:shadow-sm transition-all">
-      <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0', color)}>
-        <span className="text-white font-bold text-sm">{letter}</span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900">{name}</p>
-        <p className="text-xs text-gray-400 mt-0.5">{description}</p>
-      </div>
-      <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full flex-shrink-0">
-        Coming soon
-      </span>
-    </div>
-  )
-}
-
 // ─── Store Card ───────────────────────────────────────────────────────────────
 
 function StoreCard({ store, onClick, onDelete }: { store: StoreRecord; onClick: () => void; onDelete: () => void }) {
@@ -1182,7 +1102,7 @@ export default function SettingsPage() {
   const [storesView, setStoresView] = useState<'list' | 'add' | 'platforms'>('list')
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
   const [connectingPlatform, setConnectingPlatform] = useState<PlatformId | null>(null)
-  const [storeTab, setStoreTab] = useState<'channels' | 'ai'>('channels')
+  const [storeTab, setStoreTab] = useState<'platforms' | 'ai'>('platforms')
   const [storeAiConfig, setStoreAiConfig] = useState<StoreAiConfigFields>(defaultStoreAiConfigFields)
   const [storeAiConfigLoading, setStoreAiConfigLoading] = useState(false)
   const [storeAiConfigSaving, setStoreAiConfigSaving] = useState(false)
@@ -1195,7 +1115,7 @@ export default function SettingsPage() {
   const selectedStore = stores.find(s => s.id === selectedStoreId) ?? null
 
   useEffect(() => {
-    if (storesView !== 'platforms' || !selectedStore) return undefined
+    if (storesView !== 'platforms' || storeTab !== 'ai' || !selectedStore) return undefined
 
     let cancelled = false
     const storeId = selectedStore.id
@@ -1231,7 +1151,7 @@ export default function SettingsPage() {
     return () => {
       cancelled = true
     }
-  }, [storesView, selectedStore])
+  }, [storesView, storeTab, selectedStore])
 
   const handleConnect = async (platformId: PlatformId, account: string) => {
     if (!selectedStoreId) return
@@ -1242,19 +1162,6 @@ export default function SettingsPage() {
     setStores(prev => prev.map(s =>
       s.id === selectedStoreId
         ? { ...s, connectedPlatforms: { ...s.connectedPlatforms, [platformId]: account } }
-        : s
-    ))
-  }
-
-  const handleDisconnect = async (platformId: PlatformId) => {
-    if (!selectedStoreId) return
-    await supabase.from('store_platforms')
-      .delete()
-      .eq('store_id', selectedStoreId)
-      .eq('platform_id', platformId)
-    setStores(prev => prev.map(s =>
-      s.id === selectedStoreId
-        ? { ...s, connectedPlatforms: { ...s.connectedPlatforms, [platformId]: null } }
         : s
     ))
   }
@@ -1297,7 +1204,7 @@ export default function SettingsPage() {
 
   const handleSelectStore = (storeId: string) => {
     setSelectedStoreId(storeId)
-    setStoreTab('channels')
+    setStoreTab('platforms')
     setStoreAiConfig(defaultStoreAiConfigFields)
     setStoreAiSaved(false)
     setAiSaved(false)
@@ -1592,7 +1499,7 @@ export default function SettingsPage() {
               <div className="flex items-center gap-3 mb-8">
                 <button
                   onClick={() => {
-                    setStoreTab('channels')
+                    setStoreTab('platforms')
                     setStoresView('list')
                   }}
                   className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 transition-colors"
@@ -1628,13 +1535,13 @@ export default function SettingsPage() {
 
               <div className="flex items-center gap-6 mb-6 border-b border-gray-100">
                 {[
-                  { id: 'channels', label: 'Channels' },
+                  { id: 'platforms', label: 'Connected Platforms' },
                   { id: 'ai', label: 'AI context' },
                 ].map(tab => (
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setStoreTab(tab.id as 'channels' | 'ai')}
+                    onClick={() => setStoreTab(tab.id as 'platforms' | 'ai')}
                     className={cn(
                       'pb-3 text-sm font-semibold border-b-2 transition-colors',
                       storeTab === tab.id
@@ -1647,30 +1554,8 @@ export default function SettingsPage() {
                 ))}
               </div>
 
-              {storeTab === 'channels' && (
-                <div className="space-y-8">
-                  <div>
-                    <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Marketplaces</h2>
-                    <div className="space-y-2">
-                      {marketplaces.map(p => <MarketplaceCard key={p.id} {...p} />)}
-                    </div>
-                  </div>
-                  <div>
-                    <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Messaging & Social</h2>
-                    <div className="space-y-2">
-                      {messagingPlatforms.map(p => (
-                        <MessagingPlatformCard
-                          key={p.id}
-                          platform={p}
-                          isConnected={!!selectedStore.connectedPlatforms[p.id]}
-                          connectedAccount={selectedStore.connectedPlatforms[p.id] ?? undefined}
-                          onConnect={() => p.connectable && setConnectingPlatform(p.id)}
-                          onDisconnect={() => handleDisconnect(p.id)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
+              {storeTab === 'platforms' && (
+                <ConnectedPlatformsTab storeId={selectedStore.id} />
               )}
 
               {storeTab === 'ai' && (

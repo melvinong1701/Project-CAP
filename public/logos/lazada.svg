@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Lazada">
+  <rect width="64" height="64" rx="16" fill="#0F146D"/>
+  <path fill="#F36F21" d="M32 12 52 23.8v16.4L32 52 12 40.2V23.8L32 12z"/>
+  <path fill="#F7D64A" d="m32 12 20 11.8L32 35.6 12 23.8 32 12z"/>
+  <path fill="#fff" d="M24.1 24.8h5.2v14.1h10.5v4.3H24.1V24.8z"/>
+</svg>
