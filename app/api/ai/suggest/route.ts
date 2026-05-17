@@ -155,6 +155,7 @@ export async function POST(req: NextRequest) {
             text: result.text,
             confidence: result.confidence,
             autoSent: false,
+            dismissed: false,
           },
         })
         .eq('id', body.conversationId)

@@ -22,7 +22,7 @@ interface ConvRow {
   last_message: string | null
   last_message_at: string
   is_read: boolean
-  ai_suggestion: { text: string; confidence: string; autoSent: boolean } | null
+  ai_suggestion: { text: string; confidence: string; autoSent: boolean; dismissed?: boolean } | null
   tags: string[] | null
   assigned_to: string | null
 }
@@ -68,6 +68,7 @@ function mapConv(row: ConvRow, messages: Message[] = []): Conversation {
           text: row.ai_suggestion.text,
           confidence: row.ai_suggestion.confidence as AiConfidence,
           autoSent: row.ai_suggestion.autoSent,
+          dismissed: row.ai_suggestion.dismissed ?? false,
         }
       : undefined,
     tags: row.tags ?? [],
@@ -437,7 +438,7 @@ export default function Home() {
                   setConversations(prev =>
                     prev.map(c =>
                       c.id === convId
-                        ? { ...c, aiSuggestion: { text: res.data!.text, confidence: res.data!.confidence as 'high' | 'medium' | 'low', autoSent: false } }
+                        ? { ...c, aiSuggestion: { text: res.data!.text, confidence: res.data!.confidence as 'high' | 'medium' | 'low', autoSent: false, dismissed: false } }
                         : c
                     )
                   )
@@ -473,6 +474,7 @@ export default function Home() {
                           text: updated.ai_suggestion.text,
                           confidence: updated.ai_suggestion.confidence as AiConfidence,
                           autoSent: updated.ai_suggestion.autoSent,
+                          dismissed: updated.ai_suggestion.dismissed ?? false,
                         }
                       : undefined,
                   }
@@ -553,11 +555,48 @@ export default function Home() {
 
   const handleDismissAi = async (convId: string) => {
     setConversations(prev =>
-      prev.map(c => c.id === convId ? { ...c, aiSuggestion: undefined } : c)
+      prev.map(c =>
+        c.id === convId && c.aiSuggestion
+          ? { ...c, aiSuggestion: { ...c.aiSuggestion, dismissed: true } }
+          : c
+      )
     )
+    const conv = conversations.find(c => c.id === convId)
+    if (!conv?.aiSuggestion) return
     await supabase
       .from('conversations')
-      .update({ ai_suggestion: null })
+      .update({
+        ai_suggestion: {
+          text: conv.aiSuggestion.text,
+          confidence: conv.aiSuggestion.confidence,
+          autoSent: conv.aiSuggestion.autoSent,
+          dismissed: true,
+        },
+      })
+      .eq('id', convId)
+      .eq('organization_id', ORG_ID)
+  }
+
+  const handleShowAi = async (convId: string) => {
+    setConversations(prev =>
+      prev.map(c =>
+        c.id === convId && c.aiSuggestion
+          ? { ...c, aiSuggestion: { ...c.aiSuggestion, dismissed: false } }
+          : c
+      )
+    )
+    const conv = conversations.find(c => c.id === convId)
+    if (!conv?.aiSuggestion) return
+    await supabase
+      .from('conversations')
+      .update({
+        ai_suggestion: {
+          text: conv.aiSuggestion.text,
+          confidence: conv.aiSuggestion.confidence,
+          autoSent: conv.aiSuggestion.autoSent,
+          dismissed: false,
+        },
+      })
       .eq('id', convId)
       .eq('organization_id', ORG_ID)
   }
@@ -601,6 +640,7 @@ export default function Home() {
           onMarkRead={handleMarkRead}
           onSendMessage={handleSendMessage}
           onDismissAi={handleDismissAi}
+          onShowAi={handleShowAi}
         />
       ) : conversations.length === 0 ? (
         /* ── Empty state: no conversations yet ── */

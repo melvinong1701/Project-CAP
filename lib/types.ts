@@ -13,6 +13,7 @@ export interface AiSuggestion {
   text: string
   confidence: AiConfidence
   autoSent: boolean
+  dismissed: boolean
 }
 
 export interface Message {

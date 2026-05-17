@@ -6,13 +6,14 @@ import { AiSuggestionPanel } from './AiSuggestionPanel'
 import { ReplyBox } from './ReplyBox'
 import { CustomerPanel } from './CustomerPanel'
 import { ChannelBadge } from './ChannelBadge'
-import { ChevronRight, SidebarClose } from 'lucide-react'
+import { ChevronRight, SidebarClose, Sparkles } from 'lucide-react'
 
 interface ConversationDetailProps {
   conversation: Conversation
   onMarkRead: (id: string) => void
   onSendMessage: (convId: string, message: Message) => void
   onDismissAi: (convId: string) => void
+  onShowAi: (convId: string) => void
 }
 
 export function ConversationDetail({
@@ -20,6 +21,7 @@ export function ConversationDetail({
   onMarkRead,
   onSendMessage,
   onDismissAi,
+  onShowAi,
 }: ConversationDetailProps) {
   const [replyValue, setReplyValue] = useState('')
   const [showCustomerPanel, setShowCustomerPanel] = useState(true)
@@ -110,15 +112,27 @@ export function ConversationDetail({
         {/* AI suggestion + Reply */}
         <div className="flex-shrink-0 bg-white">
           {conversation.aiSuggestion && !conversation.aiSuggestion.autoSent && (
-            <div className="px-4 pt-3">
-              <AiSuggestionPanel
-                suggestion={conversation.aiSuggestion.text}
-                confidence={conversation.aiSuggestion.confidence}
-                onSend={handleSendAi}
-                onEdit={handleEditAi}
-                onDismiss={() => onDismissAi(conversation.id)}
-              />
-            </div>
+            conversation.aiSuggestion.dismissed ? (
+              <div className="px-4 pt-2 pb-1">
+                <button
+                  onClick={() => onShowAi(conversation.id)}
+                  className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1 transition-colors"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Show AI draft
+                </button>
+              </div>
+            ) : (
+              <div className="px-4 pt-3">
+                <AiSuggestionPanel
+                  suggestion={conversation.aiSuggestion.text}
+                  confidence={conversation.aiSuggestion.confidence}
+                  onSend={handleSendAi}
+                  onEdit={handleEditAi}
+                  onDismiss={() => onDismissAi(conversation.id)}
+                />
+              </div>
+            )
           )}
           <ReplyBox onSend={handleSend} initialValue={replyValue} />
         </div>

@@ -34,6 +34,7 @@ export const mockConversations: Conversation[] = [
       text: "Hi Amirah! Your order #240513-001 has been shipped and is on its way. The tracking number is SPX-SG-882901. Based on current estimates, it should arrive within 1–2 business days. You can track it directly on the Shopee app. Let me know if you need anything else! 😊",
       confidence: 'high',
       autoSent: false,
+      dismissed: false,
     },
     messages: [
       {
@@ -67,6 +68,7 @@ export const mockConversations: Conversation[] = [
       text: "Hi Wei Liang! I'm sorry the size isn't right. We accept returns within 7 days of delivery — just make sure the item is unworn with original tags attached. I'll raise a return request for you now. Could you confirm the size you need and I'll check stock for an exchange?",
       confidence: 'medium',
       autoSent: false,
+      dismissed: false,
     },
     messages: [
       {
@@ -101,6 +103,7 @@ export const mockConversations: Conversation[] = [
       text: "Hi Siti! Yes, the lamp comes with a universal adapter that includes Type G (UK/SG) plug support, so it will work perfectly for you. It also supports 100–240V, so no voltage converter needed. Would you like to go ahead with the order?",
       confidence: 'high',
       autoSent: false,
+      dismissed: false,
     },
     messages: [
       {
@@ -146,7 +149,7 @@ export const mockConversations: Conversation[] = [
         sender: 'ai',
         content: 'Yes! Our 20,000mAh power bank includes a 65W USB-C port that is fully compatible with all MacBook models.',
         timestamp: minsAgo(175),
-        aiSuggestion: { text: '', confidence: 'high', autoSent: true },
+        aiSuggestion: { text: '', confidence: 'high', autoSent: true, dismissed: false },
       },
       {
         id: 'msg-4-3',
@@ -202,6 +205,7 @@ export const mockConversations: Conversation[] = [
       text: 'Halo Budi! Untuk pembelian 3 pasang, kami ada promosi bundle — total hanya RM 189 (jimat RM 48). Mahu saya bantu proses pesanan sekarang?',
       confidence: 'medium',
       autoSent: false,
+      dismissed: false,
     },
     messages: [
       {
