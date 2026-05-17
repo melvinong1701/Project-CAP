@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { Conversation, Message, isAiError } from '@/lib/types'
+import { Conversation, CustomerContact, Message, isAiError } from '@/lib/types'
 import { MessageThread } from './MessageThread'
 import { AiSuggestionPanel } from './AiSuggestionPanel'
 import { ReplyBox } from './ReplyBox'
@@ -16,6 +16,7 @@ interface ConversationDetailProps {
   onShowAi: (convId: string) => void
   onClearAi: (convId: string) => void
   onRetryAi: (convId: string) => void
+  onUpdateCustomer: (convId: string, customer: CustomerContact) => void
 }
 
 export function ConversationDetail({
@@ -26,6 +27,7 @@ export function ConversationDetail({
   onShowAi,
   onClearAi,
   onRetryAi,
+  onUpdateCustomer,
 }: ConversationDetailProps) {
   const [replyValue, setReplyValue] = useState('')
   const [showCustomerPanel, setShowCustomerPanel] = useState(true)
@@ -158,7 +160,7 @@ export function ConversationDetail({
       {/* Customer panel */}
       {showCustomerPanel && (
         <div className="w-60 flex-shrink-0 border-l border-gray-100 bg-white overflow-y-auto">
-          <CustomerPanel conversation={conversation} />
+          <CustomerPanel conversation={conversation} onUpdateCustomer={onUpdateCustomer} />
         </div>
       )}
     </div>

@@ -4,7 +4,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { ConversationList } from '@/components/ConversationList'
 import { ConversationDetail } from '@/components/ConversationDetail'
 import { supabase } from '@/lib/supabase'
-import { AiConfidence, Conversation, Message, Store, isAiError } from '@/lib/types'
+import { AiConfidence, Conversation, CustomerContact, Message, Store, isAiError } from '@/lib/types'
 import { X, Loader2, Check, AlertCircle } from 'lucide-react'
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001'
@@ -14,6 +14,7 @@ const ORG_ID = '00000000-0000-0000-0000-000000000001'
 interface ConvRow {
   id: string
   organization_id: string
+  customer_id: string | null
   store_id: string | null
   channel: string
   external_id: string
@@ -28,6 +29,19 @@ interface ConvRow {
     | null
   tags: string[] | null
   assigned_to: string | null
+}
+
+interface CustomerRow {
+  id: string
+  organization_id: string
+  display_name: string | null
+  email: string | null
+  phone: string | null
+  notes: string | null
+  telegram_id: string | null
+  shopee_buyer_id: string | null
+  lazada_buyer_id: string | null
+  tiktok_buyer_id: string | null
 }
 
 interface MsgRow {
@@ -59,6 +73,7 @@ function mapConv(row: ConvRow, messages: Message[] = []): Conversation {
   return {
     id: row.id,
     organizationId: row.organization_id,
+    customerId: row.customer_id ?? undefined,
     channel: row.channel as Conversation['channel'],
     externalId: row.external_id,
     sender: { name: row.sender_name, avatarUrl: row.sender_avatar ?? undefined },
@@ -71,6 +86,21 @@ function mapConv(row: ConvRow, messages: Message[] = []): Conversation {
     aiSuggestion: mapAiSuggestion(row.ai_suggestion),
     tags: row.tags ?? [],
     assignedTo: row.assigned_to ?? undefined,
+  }
+}
+
+function mapCustomer(row: CustomerRow): CustomerContact {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    displayName: row.display_name ?? undefined,
+    email: row.email ?? undefined,
+    phone: row.phone ?? undefined,
+    notes: row.notes ?? undefined,
+    telegramId: row.telegram_id ?? undefined,
+    shopeeBuyerId: row.shopee_buyer_id ?? undefined,
+    lazadaBuyerId: row.lazada_buyer_id ?? undefined,
+    tiktokBuyerId: row.tiktok_buyer_id ?? undefined,
   }
 }
 
@@ -347,9 +377,27 @@ export default function Home() {
       msgsByConv[m.conversation_id].push(mapMsg(m))
     })
 
+    const customerIds = convRows
+      .map((r: ConvRow) => r.customer_id)
+      .filter((id: string | null): id is string => Boolean(id))
+
+    const { data: customerRows } = customerIds.length
+      ? await supabase
+          .from('customers')
+          .select('id, organization_id, display_name, email, phone, notes, telegram_id, shopee_buyer_id, lazada_buyer_id, tiktok_buyer_id')
+          .eq('organization_id', ORG_ID)
+          .in('id', customerIds)
+      : { data: [] as CustomerRow[] }
+
+    const customersById: Record<string, CustomerContact> = {}
+    ;(customerRows ?? []).forEach((customer: CustomerRow) => {
+      customersById[customer.id] = mapCustomer(customer)
+    })
+
     const mapped = convRows.map((r: ConvRow) => {
       const c = mapConv(r, msgsByConv[r.id] ?? [])
       c.storeName = storeNames[r.store_id ?? ''] ?? 'Telegram'
+      c.customer = r.customer_id ? customersById[r.customer_id] : undefined
       return c
     })
 
@@ -508,6 +556,7 @@ export default function Home() {
                     lastMessage: updated.last_message ?? c.lastMessage,
                     lastMessageAt: new Date(updated.last_message_at),
                     isRead: updated.is_read,
+                    customerId: updated.customer_id ?? c.customerId,
                     aiSuggestion: mapAiSuggestion(updated.ai_suggestion),
                   }
                 : c
@@ -683,6 +732,16 @@ export default function Home() {
       .catch(() => {})
   }
 
+  const handleUpdateCustomer = (convId: string, customer: CustomerContact) => {
+    setConversations(prev =>
+      prev.map(c =>
+        c.id === convId
+          ? { ...c, customerId: customer.id, customer }
+          : c
+      )
+    )
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex overflow-hidden bg-white" style={{ height: '100dvh' }}>
@@ -725,6 +784,7 @@ export default function Home() {
           onShowAi={handleShowAi}
           onClearAi={handleClearAi}
           onRetryAi={handleRetryAi}
+          onUpdateCustomer={handleUpdateCustomer}
         />
       ) : conversations.length === 0 ? (
         /* ── Empty state: no conversations yet ── */

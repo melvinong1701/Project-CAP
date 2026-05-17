@@ -43,9 +43,23 @@ export interface Order {
   trackingNumber?: string
 }
 
+export interface CustomerContact {
+  id: string
+  organizationId: string
+  displayName?: string
+  email?: string
+  phone?: string
+  notes?: string
+  telegramId?: string
+  shopeeBuyerId?: string
+  lazadaBuyerId?: string
+  tiktokBuyerId?: string
+}
+
 export interface Conversation {
   id: string
   organizationId: string
+  customerId?: string
   channel: Channel
   externalId: string
   sender: {
@@ -59,6 +73,7 @@ export interface Conversation {
   isRead: boolean
   messages: Message[]
   aiSuggestion?: AiSuggestion
+  customer?: CustomerContact
   order?: Order
   tags?: string[]
   assignedTo?: string
