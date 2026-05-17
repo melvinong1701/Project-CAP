@@ -78,11 +78,11 @@ export function ConversationDetail({
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-white flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-indigo-700 font-semibold text-sm flex-shrink-0">
-              {conversation.sender.name.charAt(0)}
+              {(conversation.customer?.displayName ?? conversation.sender.name).charAt(0)}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-gray-900">{conversation.sender.name}</h3>
+                <h3 className="text-sm font-semibold text-gray-900">{conversation.customer?.displayName ?? conversation.sender.name}</h3>
                 <ChannelBadge channel={conversation.channel} showLabel />
               </div>
               <p className="text-xs text-gray-400 truncate">{conversation.storeName}</p>

@@ -159,10 +159,10 @@ export function CustomerPanel({ conversation, onUpdateCustomer }: CustomerPanelP
         </div>
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-indigo-700 font-semibold">
-            {conversation.sender.name.charAt(0)}
+            {(conversation.customer?.displayName ?? conversation.sender.name).charAt(0)}
           </div>
           <div>
-            <p className="text-sm font-semibold text-gray-800">{conversation.sender.name}</p>
+            <p className="text-sm font-semibold text-gray-800">{conversation.customer?.displayName ?? conversation.sender.name}</p>
             <div className="flex items-center gap-1 mt-0.5">
               <ChannelBadge channel={conversation.channel} showLabel />
             </div>
