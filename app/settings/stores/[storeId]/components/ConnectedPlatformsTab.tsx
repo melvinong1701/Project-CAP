@@ -304,6 +304,54 @@ function PlatformDrawer({
   )
 }
 
+function DisconnectModal({
+  platformLabel,
+  isDisconnecting,
+  onConfirm,
+  onCancel,
+}: {
+  platformLabel: string
+  isDisconnecting: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/30"
+        onClick={isDisconnecting ? undefined : onCancel}
+      />
+
+      <div className="relative mx-4 w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+        <h2 className="text-sm font-semibold text-gray-900">
+          Disconnect {platformLabel}?
+        </h2>
+        <p className="mt-2 text-sm text-gray-500">
+          Messages will stop flowing into CAP immediately. Your conversation history will be kept.
+        </p>
+        <div className="mt-5 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isDisconnecting}
+            className="rounded-xl px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isDisconnecting}
+            className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-40"
+          >
+            {isDisconnecting ? 'Disconnecting...' : 'Disconnect'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ConnectedPlatformsTab({ storeId }: ConnectedPlatformsTabProps) {
   const [connections, setConnections] = useState<StorePlatformRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -367,7 +415,6 @@ export default function ConnectedPlatformsTab({ storeId }: ConnectedPlatformsTab
 
   const handleDisconnect = async (platformId: string) => {
     setDisconnecting(platformId)
-    setConfirmDisconnect(null)
     setError(null)
 
     try {
@@ -379,13 +426,16 @@ export default function ConnectedPlatformsTab({ storeId }: ConnectedPlatformsTab
       if (!res.ok) {
         const data = await res.json() as { error?: string }
         setError(data.error ?? 'Failed to disconnect platform')
+        setConfirmDisconnect(null)
         return
       }
 
       setConnections(prev => prev.filter(connection => connection.platform_id !== platformId))
       setSelectedPlatformId(null)
+      setConfirmDisconnect(null)
     } catch {
       setError('Could not disconnect platform. Please try again.')
+      setConfirmDisconnect(null)
     } finally {
       setDisconnecting(null)
     }
@@ -415,34 +465,6 @@ export default function ConnectedPlatformsTab({ storeId }: ConnectedPlatformsTab
         </div>
       )}
 
-      {confirmDisconnect && (() => {
-        const platformLabel = PLATFORMS.find(platform => platform.id === confirmDisconnect)?.label ?? confirmDisconnect
-
-        return (
-          <div className="flex items-center justify-between gap-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3">
-            <p className="text-sm text-red-800">
-              Disconnect <span className="font-semibold">{platformLabel}</span>? Messages will stop flowing into CAP immediately.
-            </p>
-            <div className="flex flex-shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmDisconnect(null)}
-                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-red-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDisconnect(confirmDisconnect)}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700"
-              >
-                Disconnect
-              </button>
-            </div>
-          </div>
-        )
-      })()}
-
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {platformItems.map(item => (
           <PlatformCard
@@ -468,6 +490,19 @@ export default function ConnectedPlatformsTab({ storeId }: ConnectedPlatformsTab
           isDisconnecting={disconnecting === selectedItem.platform.id}
         />
       )}
+
+      {confirmDisconnect && (() => {
+        const platformLabel = PLATFORMS.find(platform => platform.id === confirmDisconnect)?.label ?? confirmDisconnect
+
+        return (
+          <DisconnectModal
+            platformLabel={platformLabel}
+            isDisconnecting={disconnecting === confirmDisconnect}
+            onConfirm={() => handleDisconnect(confirmDisconnect)}
+            onCancel={() => setConfirmDisconnect(null)}
+          />
+        )
+      })()}
     </div>
   )
 }
