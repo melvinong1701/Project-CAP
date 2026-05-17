@@ -50,6 +50,12 @@ export const PLATFORMS: PlatformDef[] = [
         status: 'coming_soon',
       },
       {
+        key: 'ai_suggest',
+        label: 'AI Suggestions',
+        description: 'AI drafts replies for agent review',
+        status: 'coming_soon',
+      },
+      {
         key: 'orders',
         label: 'Orders',
         description: 'Look up order status for AI context',
@@ -74,6 +80,12 @@ export const PLATFORMS: PlatformDef[] = [
         key: 'messages',
         label: 'Messages',
         description: 'Receive and reply to buyer messages',
+        status: 'coming_soon',
+      },
+      {
+        key: 'ai_suggest',
+        label: 'AI Suggestions',
+        description: 'AI drafts replies for agent review',
         status: 'coming_soon',
       },
       {
@@ -104,6 +116,12 @@ export const PLATFORMS: PlatformDef[] = [
         status: 'coming_soon',
       },
       {
+        key: 'ai_suggest',
+        label: 'AI Suggestions',
+        description: 'AI drafts replies for agent review',
+        status: 'coming_soon',
+      },
+      {
         key: 'orders',
         label: 'Orders',
         description: 'Look up order status for AI context',
@@ -122,6 +140,12 @@ export const PLATFORMS: PlatformDef[] = [
         key: 'messages',
         label: 'Messages',
         description: 'Receive and reply to buyer messages',
+        status: 'coming_soon',
+      },
+      {
+        key: 'ai_suggest',
+        label: 'AI Suggestions',
+        description: 'AI drafts replies for agent review',
         status: 'coming_soon',
       },
       {

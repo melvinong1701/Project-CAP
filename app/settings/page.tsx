@@ -1,7 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import ConnectedPlatformsTab from './stores/[storeId]/components/ConnectedPlatformsTab'
 import {
   ArrowLeft, Store, Bot, Bell, Users, CreditCard,
@@ -277,97 +276,6 @@ function serializeAiConfig(fields: StoreAiConfigFields, store: StoreRecord) {
 
 type PlatformId = 'whatsapp' | 'facebook_messenger' | 'instagram' | 'line' | 'telegram' | 'zalo'
 
-interface MessagingPlatform {
-  id: PlatformId
-  name: string
-  description: string
-  color: string
-  letter: string
-  connectable: boolean
-  connectLabel?: string
-  steps?: string[]
-  accountPlaceholder?: string
-}
-
-const messagingPlatforms: MessagingPlatform[] = [
-  {
-    id: 'whatsapp',
-    name: 'WhatsApp Business',
-    description: 'All of SEA · Most widely used',
-    color: 'bg-green-600',
-    letter: 'W',
-    connectable: true,
-    connectLabel: 'Connect via Meta',
-    steps: [
-      'Authorize with your Meta Business account',
-      'Select your verified WhatsApp Business number',
-      'Messages from this number will route to this store',
-    ],
-    accountPlaceholder: '+65 9123 4567 (TechGear SG)',
-  },
-  {
-    id: 'facebook_messenger',
-    name: 'Facebook Messenger',
-    description: 'All of SEA · Meta',
-    color: 'bg-blue-500',
-    letter: 'M',
-    connectable: true,
-    connectLabel: 'Connect via Meta',
-    steps: [
-      'Log in to Facebook and authorize',
-      'Select the Facebook Page to connect',
-      'Messages from this page will route to this store',
-    ],
-    accountPlaceholder: 'TechGear SG Official Page',
-  },
-  {
-    id: 'instagram',
-    name: 'Instagram Direct',
-    description: 'All of SEA · Meta',
-    color: 'bg-pink-500',
-    letter: 'I',
-    connectable: true,
-    connectLabel: 'Connect via Meta',
-    steps: [
-      'Connect your Instagram Business account via Facebook',
-      'Select the Instagram account to link',
-      'DMs from this account will route to this store',
-    ],
-    accountPlaceholder: '@homedecor.my',
-  },
-  {
-    id: 'line',
-    name: 'LINE',
-    description: 'TH · TW · JP',
-    color: 'bg-green-400',
-    letter: 'L',
-    connectable: false,
-  },
-  {
-    id: 'telegram',
-    name: 'Telegram',
-    description: 'All regions · Popular with tech-savvy sellers',
-    color: 'bg-sky-500',
-    letter: 'T',
-    connectable: true,
-    connectLabel: 'Connect Telegram bot',
-    steps: [
-      'Create a Telegram bot via @BotFather and copy the token',
-      'Paste the bot token below — we\'ll verify it and register the webhook automatically',
-      'Messages sent to your bot will appear in your inbox',
-    ],
-    accountPlaceholder: '@your_bot_username',
-  },
-  {
-    id: 'zalo',
-    name: 'Zalo',
-    description: 'VN · Dominant messaging app',
-    color: 'bg-blue-700',
-    letter: 'Z',
-    connectable: false,
-  },
-]
-
 // ─── Store / country data ────────────────────────────────────────────────────
 
 type Country = 'SG' | 'MY' | 'ID' | 'TH' | 'PH' | 'VN'
@@ -551,182 +459,6 @@ function AiTextArea({
         onChange={e => onChange(e.target.value)}
         className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none placeholder:text-gray-300"
       />
-    </div>
-  )
-}
-
-// ─── Connect Modal ────────────────────────────────────────────────────────────
-
-interface ConnectModalProps {
-  platform: MessagingPlatform
-  storeId: string
-  onClose: () => void
-  onConnect: (platformId: PlatformId, account: string) => void
-}
-
-function ConnectModal({ platform, storeId, onClose, onConnect }: ConnectModalProps) {
-  const [step, setStep] = useState<'intro' | 'token' | 'connecting' | 'done' | 'error'>('intro')
-  const [botToken, setBotToken] = useState('')
-  const [connectedAccount, setConnectedAccount] = useState('')
-  const [errorMsg, setErrorMsg] = useState('')
-
-  const handleConnect = async () => {
-    if (!botToken.trim()) return
-    setStep('connecting')
-    setErrorMsg('')
-    try {
-      const res = await fetch('/api/telegram/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ botToken: botToken.trim(), storeId }),
-      })
-      const data = await res.json() as { ok?: boolean; error?: string; accountLabel?: string }
-      if (!res.ok || !data.ok) {
-        setErrorMsg(data.error ?? 'Connection failed')
-        setStep('error')
-        return
-      }
-      setConnectedAccount(data.accountLabel ?? '@bot')
-      setStep('done')
-    } catch {
-      setErrorMsg('Network error — please try again')
-      setStep('error')
-    }
-  }
-
-  const handleFinish = () => {
-    onConnect(platform.id, connectedAccount)
-    onClose()
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={step !== 'connecting' ? onClose : undefined} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 flex flex-col gap-5">
-
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0', platform.color)}>
-              <span className="text-white font-bold text-sm">{platform.letter}</span>
-            </div>
-            <div>
-              <p className="font-semibold text-gray-900 text-sm">Connect {platform.name}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{platform.description}</p>
-            </div>
-          </div>
-          {step !== 'connecting' && (
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        {step === 'intro' && (
-          <>
-            <div className="bg-gray-50 rounded-xl p-4 space-y-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">How it works</p>
-              {platform.steps?.map((s, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold flex items-center justify-center flex-shrink-0 mt-0.5">
-                    {i + 1}
-                  </span>
-                  <p className="text-sm text-gray-600">{s}</p>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-start gap-2 text-xs text-gray-500 bg-sky-50 rounded-lg p-3">
-              <AlertCircle className="w-4 h-4 text-sky-500 flex-shrink-0 mt-0.5" />
-              <p>
-                Open Telegram, search <span className="font-semibold">@BotFather</span>, send <span className="font-mono bg-white px-1 rounded">/newbot</span>, then copy the token it gives you.
-              </p>
-            </div>
-            <button
-              onClick={() => setStep('token')}
-              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-            >
-              I have my bot token →
-            </button>
-          </>
-        )}
-
-        {step === 'token' && (
-          <>
-            <div>
-              <label className="text-xs font-medium text-gray-500 mb-1.5 block">Bot token from @BotFather</label>
-              <input
-                type="text"
-                value={botToken}
-                onChange={e => setBotToken(e.target.value)}
-                placeholder="1234567890:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-gray-300"
-                autoFocus
-              />
-              <p className="text-xs text-gray-400 mt-1.5">Paste the full token — it starts with a number followed by a colon.</p>
-            </div>
-            <div className="flex items-start gap-2 text-xs text-gray-400 bg-amber-50 rounded-lg p-3">
-              <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-              <p>We store this token securely to send and receive messages on your behalf.</p>
-            </div>
-            <button
-              onClick={handleConnect}
-              disabled={!botToken.trim()}
-              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-semibold transition-colors"
-            >
-              Connect bot
-            </button>
-          </>
-        )}
-
-        {step === 'connecting' && (
-          <div className="flex flex-col items-center py-8 gap-4">
-            <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-            <p className="text-sm text-gray-500">Verifying token and registering webhook…</p>
-          </div>
-        )}
-
-        {step === 'error' && (
-          <>
-            <div className="flex flex-col items-center py-4 gap-3">
-              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                <X className="w-6 h-6 text-red-600" />
-              </div>
-              <div className="text-center">
-                <p className="font-semibold text-gray-900 text-sm">Connection failed</p>
-                <p className="text-xs text-gray-400 mt-1">{errorMsg}</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setStep('token')}
-              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors"
-            >
-              Try again
-            </button>
-          </>
-        )}
-
-        {step === 'done' && (
-          <>
-            <div className="flex flex-col items-center py-4 gap-3">
-              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                <Check className="w-6 h-6 text-green-600" />
-              </div>
-              <div className="text-center">
-                <p className="font-semibold text-gray-900 text-sm">Connected!</p>
-                <p className="text-xs text-gray-400 mt-1">{connectedAccount}</p>
-              </div>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600">
-              Messages sent to your Telegram bot will now flow into your inbox. Webhook is live.
-            </div>
-            <button
-              onClick={handleFinish}
-              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors"
-            >
-              Done
-            </button>
-          </>
-        )}
-      </div>
     </div>
   )
 }
@@ -1101,7 +833,6 @@ export default function SettingsPage() {
   }, [])
   const [storesView, setStoresView] = useState<'list' | 'add' | 'platforms'>('list')
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
-  const [connectingPlatform, setConnectingPlatform] = useState<PlatformId | null>(null)
   const [storeTab, setStoreTab] = useState<'platforms' | 'ai'>('platforms')
   const [storeAiConfig, setStoreAiConfig] = useState<StoreAiConfigFields>(defaultStoreAiConfigFields)
   const [storeAiConfigLoading, setStoreAiConfigLoading] = useState(false)
@@ -1152,19 +883,6 @@ export default function SettingsPage() {
       cancelled = true
     }
   }, [storesView, storeTab, selectedStore])
-
-  const handleConnect = async (platformId: PlatformId, account: string) => {
-    if (!selectedStoreId) return
-    await supabase.from('store_platforms').upsert(
-      { store_id: selectedStoreId, platform_id: platformId, account_label: account },
-      { onConflict: 'store_id,platform_id' }
-    )
-    setStores(prev => prev.map(s =>
-      s.id === selectedStoreId
-        ? { ...s, connectedPlatforms: { ...s.connectedPlatforms, [platformId]: account } }
-        : s
-    ))
-  }
 
   const handleAddStore = async (store: StoreRecord) => {
     try {
@@ -1373,26 +1091,15 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex bg-gray-50" style={{ height: '100dvh' }}>
+    <div className="flex h-screen overflow-hidden bg-gray-50">
 
       {/* Modals */}
-      {connectingPlatform && selectedStore && (() => {
-        const p = messagingPlatforms.find(m => m.id === connectingPlatform)!
-        return (
-          <ConnectModal
-            platform={p}
-            storeId={selectedStoreId!}
-            onClose={() => setConnectingPlatform(null)}
-            onConnect={handleConnect}
-          />
-        )
-      })()}
       {showInvite && (
         <InviteModal onClose={() => setShowInvite(false)} onInvite={handleInvite} />
       )}
 
       {/* Sidebar */}
-      <div className="w-60 flex-shrink-0 flex flex-col bg-white border-r border-gray-100">
+      <div className="w-60 h-screen overflow-y-auto flex-shrink-0 flex flex-col bg-white border-r border-gray-100">
         <div className="px-5 py-5 border-b border-gray-100">
           <button
             onClick={() => router.push('/')}
