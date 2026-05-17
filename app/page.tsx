@@ -4,7 +4,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { ConversationList } from '@/components/ConversationList'
 import { ConversationDetail } from '@/components/ConversationDetail'
 import { supabase } from '@/lib/supabase'
-import { AiConfidence, Conversation, Message, Store } from '@/lib/types'
+import { AiConfidence, Conversation, Message, Store, isAiError } from '@/lib/types'
 import { X, Loader2, Check, AlertCircle } from 'lucide-react'
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001'
@@ -22,7 +22,10 @@ interface ConvRow {
   last_message: string | null
   last_message_at: string
   is_read: boolean
-  ai_suggestion: { text: string; confidence: string; autoSent: boolean; dismissed?: boolean } | null
+  ai_suggestion:
+    | { text: string; confidence: string; autoSent: boolean; dismissed?: boolean }
+    | { error: string; dismissed: false }
+    | null
   tags: string[] | null
   assigned_to: string | null
 }
@@ -48,6 +51,8 @@ interface StoreRow {
   name: string
 }
 
+type SuggestResponse = { data?: { text: string; confidence: string }; error?: string }
+
 // ─── Mappers ────────────────────────────────────────────────────────────────
 
 function mapConv(row: ConvRow, messages: Message[] = []): Conversation {
@@ -63,17 +68,25 @@ function mapConv(row: ConvRow, messages: Message[] = []): Conversation {
     lastMessageAt: new Date(row.last_message_at),
     isRead: row.is_read,
     messages,
-    aiSuggestion: row.ai_suggestion
-      ? {
-          text: row.ai_suggestion.text,
-          confidence: row.ai_suggestion.confidence as AiConfidence,
-          autoSent: row.ai_suggestion.autoSent,
-          dismissed: row.ai_suggestion.dismissed ?? false,
-        }
-      : undefined,
+    aiSuggestion: mapAiSuggestion(row.ai_suggestion),
     tags: row.tags ?? [],
     assignedTo: row.assigned_to ?? undefined,
   }
+}
+
+function mapAiSuggestion(row: ConvRow['ai_suggestion']): Conversation['aiSuggestion'] {
+  if (!row) return undefined
+  if ('error' in row) return { error: row.error, dismissed: false as const }
+  return {
+    text: row.text,
+    confidence: row.confidence as AiConfidence,
+    autoSent: row.autoSent,
+    dismissed: row.dismissed ?? false,
+  }
+}
+
+function normalizeAiErrorCode(error: string | undefined): string {
+  return error === 'timeout' || error === 'no_messages' ? error : 'pipeline_error'
 }
 
 function mapMsg(row: MsgRow): Message {
@@ -433,7 +446,7 @@ export default function Home() {
               body: JSON.stringify({ conversationId: convId }),
             })
               .then(r => r.json())
-              .then((res: { data?: { text: string; confidence: string }; error?: string }) => {
+              .then((res: SuggestResponse) => {
                 if (res.data) {
                   setConversations(prev =>
                     prev.map(c =>
@@ -442,9 +455,35 @@ export default function Home() {
                         : c
                     )
                   )
+                } else {
+                  const errorCode = normalizeAiErrorCode(res.error)
+                  setConversations(prev =>
+                    prev.map(c =>
+                      c.id === convId ? { ...c, aiSuggestion: { error: errorCode, dismissed: false as const } } : c
+                    )
+                  )
+                  supabase
+                    .from('conversations')
+                    .update({ ai_suggestion: { error: errorCode, dismissed: false } })
+                    .eq('id', convId)
+                    .eq('organization_id', ORG_ID)
+                    .then(() => {})
                 }
               })
-              .catch(() => {})
+              .catch(() => {
+                const errorCode = 'pipeline_error'
+                setConversations(prev =>
+                  prev.map(c =>
+                    c.id === convId ? { ...c, aiSuggestion: { error: errorCode, dismissed: false as const } } : c
+                  )
+                )
+                supabase
+                  .from('conversations')
+                  .update({ ai_suggestion: { error: errorCode, dismissed: false } })
+                  .eq('id', convId)
+                  .eq('organization_id', ORG_ID)
+                  .then(() => {})
+              })
           }
         }
       )
@@ -469,14 +508,7 @@ export default function Home() {
                     lastMessage: updated.last_message ?? c.lastMessage,
                     lastMessageAt: new Date(updated.last_message_at),
                     isRead: updated.is_read,
-                    aiSuggestion: updated.ai_suggestion
-                      ? {
-                          text: updated.ai_suggestion.text,
-                          confidence: updated.ai_suggestion.confidence as AiConfidence,
-                          autoSent: updated.ai_suggestion.autoSent,
-                          dismissed: updated.ai_suggestion.dismissed ?? false,
-                        }
-                      : undefined,
+                    aiSuggestion: mapAiSuggestion(updated.ai_suggestion),
                   }
                 : c
             )
@@ -574,13 +606,13 @@ export default function Home() {
   const handleDismissAi = async (convId: string) => {
     setConversations(prev =>
       prev.map(c =>
-        c.id === convId && c.aiSuggestion
+        c.id === convId && c.aiSuggestion && !isAiError(c.aiSuggestion)
           ? { ...c, aiSuggestion: { ...c.aiSuggestion, dismissed: true } }
           : c
       )
     )
     const conv = conversations.find(c => c.id === convId)
-    if (!conv?.aiSuggestion) return
+    if (!conv?.aiSuggestion || isAiError(conv.aiSuggestion)) return
     await supabase
       .from('conversations')
       .update({
@@ -598,13 +630,13 @@ export default function Home() {
   const handleShowAi = async (convId: string) => {
     setConversations(prev =>
       prev.map(c =>
-        c.id === convId && c.aiSuggestion
+        c.id === convId && c.aiSuggestion && !isAiError(c.aiSuggestion)
           ? { ...c, aiSuggestion: { ...c.aiSuggestion, dismissed: false } }
           : c
       )
     )
     const conv = conversations.find(c => c.id === convId)
-    if (!conv?.aiSuggestion) return
+    if (!conv?.aiSuggestion || isAiError(conv.aiSuggestion)) return
     await supabase
       .from('conversations')
       .update({
@@ -617,6 +649,38 @@ export default function Home() {
       })
       .eq('id', convId)
       .eq('organization_id', ORG_ID)
+  }
+
+  const handleRetryAi = (convId: string) => {
+    setConversations(prev =>
+      prev.map(c => c.id === convId ? { ...c, aiSuggestion: undefined } : c)
+    )
+    fetch('/api/ai/suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: convId }),
+    })
+      .then(r => r.json())
+      .then((res: SuggestResponse) => {
+        if (res.data) {
+          setConversations(prev =>
+            prev.map(c =>
+              c.id === convId
+                ? {
+                    ...c,
+                    aiSuggestion: {
+                      text: res.data!.text,
+                      confidence: res.data!.confidence as AiConfidence,
+                      autoSent: false,
+                      dismissed: false,
+                    },
+                  }
+                : c
+            )
+          )
+        }
+      })
+      .catch(() => {})
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -660,6 +724,7 @@ export default function Home() {
           onDismissAi={handleDismissAi}
           onShowAi={handleShowAi}
           onClearAi={handleClearAi}
+          onRetryAi={handleRetryAi}
         />
       ) : conversations.length === 0 ? (
         /* ── Empty state: no conversations yet ── */

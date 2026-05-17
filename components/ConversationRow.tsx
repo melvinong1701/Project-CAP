@@ -1,5 +1,5 @@
 'use client'
-import { Conversation } from '@/lib/types'
+import { Conversation, isAiError } from '@/lib/types'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { ChannelBadge } from './ChannelBadge'
 import { Sparkles } from 'lucide-react'
@@ -11,7 +11,7 @@ interface ConversationRowProps {
 }
 
 export function ConversationRow({ conversation, isActive, onClick }: ConversationRowProps) {
-  const hasPendingAi = conversation.aiSuggestion && !conversation.aiSuggestion.autoSent
+  const hasPendingAi = conversation.aiSuggestion && !isAiError(conversation.aiSuggestion) && !conversation.aiSuggestion.autoSent
 
   return (
     <button

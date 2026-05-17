@@ -1,5 +1,5 @@
 'use client'
-import { Message } from '@/lib/types'
+import { Message, isAiError } from '@/lib/types'
 import { cn, formatRelativeTime } from '@/lib/utils'
 import { Sparkles } from 'lucide-react'
 
@@ -37,7 +37,7 @@ export function MessageThread({ messages }: MessageThreadProps) {
                 >
                   {message.content}
                 </div>
-                {message.sender === 'ai' && message.aiSuggestion?.autoSent && (
+                {message.sender === 'ai' && message.aiSuggestion && !isAiError(message.aiSuggestion) && message.aiSuggestion.autoSent && (
                   <div className="flex items-center gap-1 text-xs text-violet-500">
                     <Sparkles className="w-3 h-3" />
                     <span>AI · auto-sent</span>

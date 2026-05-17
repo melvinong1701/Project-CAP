@@ -42,8 +42,22 @@ function getSupabase() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
-function jsonError(error: string, status: number) {
-  return NextResponse.json({ error }, { status })
+type AiSuggestErrorCode = 'pipeline_error' | 'timeout' | 'no_messages'
+
+function jsonAiError(error: AiSuggestErrorCode) {
+  return NextResponse.json({ error }, { status: 200 })
+}
+
+function isTimeoutError(err: unknown): boolean {
+  if (!(err instanceof Error)) {
+    return false
+  }
+
+  const name = err.name.toLowerCase()
+  const message = err.message.toLowerCase()
+  const code = 'code' in err ? String((err as { code?: unknown }).code).toLowerCase() : ''
+
+  return name.includes('timeout') || message.includes('timeout') || message.includes('timed out') || code.includes('timeout')
 }
 
 function isKnownSender(sender: string): sender is ConversationContextMessage['sender'] {
@@ -66,14 +80,9 @@ function toContextMessages(messages: MessageRow[] | null): ConversationContextMe
 
 export async function POST(req: NextRequest) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY
-    if (!apiKey) {
-      return jsonError('OPENAI_API_KEY is required for AI suggestions', 500)
-    }
-
     const body = await req.json() as SuggestRequestBody
     if (!body.conversationId && !body.latestMessage?.trim()) {
-      return jsonError('conversationId or latestMessage is required', 400)
+      return jsonAiError('no_messages')
     }
 
     const supabase = getSupabase()
@@ -90,7 +99,7 @@ export async function POST(req: NextRequest) {
         .single()
 
       if (convErr || !conv) {
-        return jsonError('Conversation not found', 404)
+        return jsonAiError('pipeline_error')
       }
 
       conversation = conv as ConversationRow
@@ -104,10 +113,14 @@ export async function POST(req: NextRequest) {
         .limit(10)
 
       if (msgErr) {
-        return jsonError('Failed to load conversation messages', 500)
+        return jsonAiError('pipeline_error')
       }
 
       history = toContextMessages(messages as MessageRow[] | null).reverse()
+
+      if (history.length === 0 && !body.latestMessage?.trim()) {
+        return jsonAiError('no_messages')
+      }
 
       if (conversation.store_id) {
         const { data: config, error: configErr } = await supabase
@@ -118,7 +131,7 @@ export async function POST(req: NextRequest) {
           .maybeSingle()
 
         if (configErr) {
-          return jsonError('Failed to load store AI config', 500)
+          return jsonAiError('pipeline_error')
         }
 
         storeConfig = config as StoreConfig | null
@@ -127,7 +140,12 @@ export async function POST(req: NextRequest) {
 
     const latestMessage = body.latestMessage?.trim() || conversation?.last_message?.trim()
     if (!latestMessage) {
-      return jsonError('latestMessage could not be resolved', 400)
+      return jsonAiError('no_messages')
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) {
+      return jsonAiError('pipeline_error')
     }
 
     const suggestInput: SuggestReplyInput = {
@@ -162,7 +180,7 @@ export async function POST(req: NextRequest) {
         .eq('organization_id', ORG_ID)
 
       if (updateErr) {
-        return jsonError('Failed to persist AI suggestion', 500)
+        return jsonAiError('pipeline_error')
       }
     }
 
@@ -171,6 +189,6 @@ export async function POST(req: NextRequest) {
     })
   } catch (err) {
     console.error('AI suggest error:', err instanceof Error ? err.message : 'Unknown error')
-    return jsonError('Internal error while generating AI suggestion', 500)
+    return jsonAiError(isTimeoutError(err) ? 'timeout' : 'pipeline_error')
   }
 }

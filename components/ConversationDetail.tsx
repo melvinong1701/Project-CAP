@@ -1,12 +1,12 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { Conversation, Message } from '@/lib/types'
+import { Conversation, Message, isAiError } from '@/lib/types'
 import { MessageThread } from './MessageThread'
 import { AiSuggestionPanel } from './AiSuggestionPanel'
 import { ReplyBox } from './ReplyBox'
 import { CustomerPanel } from './CustomerPanel'
 import { ChannelBadge } from './ChannelBadge'
-import { ChevronRight, SidebarClose, Sparkles } from 'lucide-react'
+import { AlertCircle, ChevronRight, SidebarClose, Sparkles } from 'lucide-react'
 
 interface ConversationDetailProps {
   conversation: Conversation
@@ -15,6 +15,7 @@ interface ConversationDetailProps {
   onDismissAi: (convId: string) => void
   onShowAi: (convId: string) => void
   onClearAi: (convId: string) => void
+  onRetryAi: (convId: string) => void
 }
 
 export function ConversationDetail({
@@ -24,6 +25,7 @@ export function ConversationDetail({
   onDismissAi,
   onShowAi,
   onClearAi,
+  onRetryAi,
 }: ConversationDetailProps) {
   const [replyValue, setReplyValue] = useState('')
   const [showCustomerPanel, setShowCustomerPanel] = useState(true)
@@ -47,7 +49,7 @@ export function ConversationDetail({
   }
 
   const handleSendAi = () => {
-    if (!conversation.aiSuggestion) return
+    if (!conversation.aiSuggestion || isAiError(conversation.aiSuggestion)) return
     const newMessage: Message = {
       id: `msg-${Date.now()}`,
       conversationId: conversation.id,
@@ -113,8 +115,21 @@ export function ConversationDetail({
 
         {/* AI suggestion + Reply */}
         <div className="flex-shrink-0 bg-white">
-          {conversation.aiSuggestion && !conversation.aiSuggestion.autoSent && (
-            conversation.aiSuggestion.dismissed ? (
+          {conversation.aiSuggestion && (
+            isAiError(conversation.aiSuggestion) ? (
+              <div className="px-4 pt-2 pb-1 flex items-center gap-2">
+                <span className="text-xs text-gray-400 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3 text-amber-400" />
+                  AI couldn&apos;t generate a suggestion
+                </span>
+                <button
+                  onClick={() => onRetryAi(conversation.id)}
+                  className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : conversation.aiSuggestion.autoSent ? null : conversation.aiSuggestion.dismissed ? (
               <div className="px-4 pt-2 pb-1">
                 <button
                   onClick={() => onShowAi(conversation.id)}

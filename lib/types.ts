@@ -9,11 +9,21 @@ export type Channel =
 
 export type AiConfidence = 'high' | 'medium' | 'low'
 
-export interface AiSuggestion {
-  text: string
-  confidence: AiConfidence
-  autoSent: boolean
-  dismissed: boolean
+export type AiSuggestion =
+  | {
+      text: string
+      confidence: AiConfidence
+      autoSent: boolean
+      dismissed: boolean
+    }
+  | {
+      error: string
+      dismissed: false
+    }
+
+// AI error codes: pipeline_error, timeout, no_messages.
+export function isAiError(s: AiSuggestion): s is { error: string; dismissed: false } {
+  return 'error' in s
 }
 
 export interface Message {

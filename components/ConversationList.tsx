@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { Conversation } from '@/lib/types'
+import { Conversation, isAiError } from '@/lib/types'
 import { ConversationRow } from './ConversationRow'
 import { Search } from 'lucide-react'
 
@@ -30,7 +30,7 @@ export function ConversationList({ conversations, activeId, onSelect }: Conversa
     const matchesFilter =
       activeFilter === 'all' ||
       (activeFilter === 'unread' && !c.isRead) ||
-      (activeFilter === 'ai-draft' && c.aiSuggestion && !c.aiSuggestion.autoSent) ||
+      (activeFilter === 'ai-draft' && c.aiSuggestion && !isAiError(c.aiSuggestion) && !c.aiSuggestion.autoSent) ||
       (activeFilter === 'needs-review' && c.tags?.includes('escalated'))
 
     return matchesSearch && matchesFilter
