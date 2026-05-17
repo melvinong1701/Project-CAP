@@ -6,7 +6,7 @@ export type PlatformCapability = {
 }
 
 export type PlatformDef = {
-  id: 'telegram' | 'shopee' | 'lazada' | 'tiktok_shop'
+  id: 'telegram' | 'shopee' | 'lazada' | 'tiktok_shop' | 'tokopedia' | 'whatsapp' | 'line' | 'meta'
   label: string
   logo: string
   color: string
@@ -107,6 +107,96 @@ export const PLATFORMS: PlatformDef[] = [
         key: 'orders',
         label: 'Orders',
         description: 'Look up order status for AI context',
+        status: 'coming_soon',
+      },
+    ],
+  },
+  {
+    id: 'tokopedia',
+    label: 'Tokopedia',
+    logo: '/logos/tokopedia.svg',
+    color: '#42B549',
+    connectAvailable: false,
+    capabilities: [
+      {
+        key: 'messages',
+        label: 'Messages',
+        description: 'Receive and reply to buyer messages',
+        status: 'coming_soon',
+      },
+      {
+        key: 'orders',
+        label: 'Orders',
+        description: 'Look up order status for AI context',
+        status: 'coming_soon',
+      },
+      {
+        key: 'products',
+        label: 'Product Catalogue',
+        description: 'Sync products for AI product queries',
+        status: 'coming_soon',
+      },
+    ],
+  },
+  {
+    id: 'whatsapp',
+    label: 'WhatsApp',
+    logo: '/logos/whatsapp.svg',
+    color: '#25D366',
+    connectAvailable: false,
+    capabilities: [
+      {
+        key: 'messages',
+        label: 'Messages',
+        description: 'Receive and reply to customer messages',
+        status: 'coming_soon',
+      },
+      {
+        key: 'ai_suggest',
+        label: 'AI Suggestions',
+        description: 'AI drafts replies for agent review',
+        status: 'coming_soon',
+      },
+    ],
+  },
+  {
+    id: 'line',
+    label: 'Line',
+    logo: '/logos/line.svg',
+    color: '#06C755',
+    connectAvailable: false,
+    capabilities: [
+      {
+        key: 'messages',
+        label: 'Messages',
+        description: 'Receive and reply to customer messages',
+        status: 'coming_soon',
+      },
+      {
+        key: 'ai_suggest',
+        label: 'AI Suggestions',
+        description: 'AI drafts replies for agent review',
+        status: 'coming_soon',
+      },
+    ],
+  },
+  {
+    id: 'meta',
+    label: 'Meta (Facebook & Instagram)',
+    logo: '/logos/meta.svg',
+    color: '#0866FF',
+    connectAvailable: false,
+    capabilities: [
+      {
+        key: 'messages',
+        label: 'Messages',
+        description: 'Receive and reply to Facebook and Instagram DMs',
+        status: 'coming_soon',
+      },
+      {
+        key: 'comments',
+        label: 'Comments',
+        description: 'Monitor and reply to post comments',
         status: 'coming_soon',
       },
     ],
