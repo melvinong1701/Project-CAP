@@ -464,8 +464,8 @@ interface TeamMember {
 
 const initialTeam: TeamMember[] = [
   { id: '1', name: 'Melvin', email: 'melvinong1701@gmail.com', role: 'owner', status: 'active', avatar: 'M' },
-  { id: '2', name: 'Ryan', email: 'ryan@oakchat.app', role: 'admin', status: 'active', avatar: 'R' },
-  { id: '3', name: 'Martin', email: 'martin@oakchat.app', role: 'admin', status: 'active', avatar: 'M' },
+  { id: '2', name: 'Ryan', email: 'ryan@projectcap.app', role: 'admin', status: 'active', avatar: 'R' },
+  { id: '3', name: 'Martin', email: 'martin@projectcap.app', role: 'admin', status: 'active', avatar: 'M' },
 ]
 
 const roleConfig: Record<Role, { label: string; color: string; bg: string; icon: React.ElementType }> = {
