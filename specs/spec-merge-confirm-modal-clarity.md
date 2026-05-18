@@ -1,140 +1,53 @@
-# Codex Task Spec: Clarify Customer Merge Confirmation Modal
-
-**Type:** `fix`  
-**Priority:** `P1 - this sprint`  
-**Branch:** `fix/merge-confirm-modal-clarity`
-
----
+# Spec: Merge confirm modal — clarity fix
 
 ## Goal
+The `MergeConfirmModal` asks the user to pick a profile to keep, but shows no copy explaining what "keeping" a profile means or what happens to the other one. Add clear explanatory text so the agent understands the consequence before clicking Confirm.
 
-Make the customer merge confirmation modal clearly explain that the user is choosing the surviving customer profile. The UI should make it obvious which profile will be kept and which profile will be permanently removed after merge.
+## File
+`app/customers/page.tsx` — `MergeConfirmModal` function (line ~829) and `MergeProfileCard` function (line ~911)
 
----
+## Current behaviour
+The modal renders two `MergeProfileCard` components side by side. The modal header says "Confirm merge". There is no instruction text. The user has to guess that clicking a card selects it as the survivor, and that the other profile will be absorbed (deleted).
 
-## Context
+## What to change
 
-The Customers page already has a merge confirmation modal in `app/customers/page.tsx`.
+### 1. Add subtitle copy below the modal header
 
-The relevant components are:
-- `MergeConfirmModal`
-- `MergeProfileCard`
+After the `<div className="flex items-center justify-between">` header block (line ~887), insert:
 
-Current problem:
-- The modal shows two profile cards side by side.
-- There is no explanatory copy beneath the heading.
-- Each card uses a small radio dot, so users may not understand that selecting one means "keep this profile" and the other profile will be merged away.
-- The `Confirm merge` button is already disabled until a keep profile is selected.
-
-This is a UI-only clarity fix. Merge behaviour and API calls already exist and should not change.
-
----
-
-## Scope - What To Build
-
-- [ ] In `MergeConfirmModal`, add a subtitle directly beneath the `Confirm merge` heading:
-
-  ```text
-  Choose which profile to keep. The other will be merged into it and permanently removed.
-  ```
-
-- [ ] In `MergeProfileCard`, replace the selected-state radio dot with a visible badge that says:
-
-  ```text
-  Keep
-  ```
-
-- [ ] Style the `Keep` badge using existing Tailwind/shadcn patterns only. Use green or indigo styling.
-
-- [ ] On the unselected card, after a selection has been made on the other card, show muted warning text or badge:
-
-  ```text
-  Will be removed
-  ```
-
-- [ ] Before either card is selected, do not show destructive wording. Either show nothing in the status area or use a neutral hint:
-
-  ```text
-  Select
-  ```
-
-- [ ] Keep the existing behaviour where `Confirm merge` is disabled until a profile is selected.
-
-- [ ] Preserve the current side-by-side card layout and existing profile details.
-
----
-
-## Files To Modify
-
-| Action | Path | Notes |
-|--------|------|-------|
-| Modify | `app/customers/page.tsx` | Only update `MergeConfirmModal` and `MergeProfileCard` UI |
-
----
-
-## Acceptance Criteria
-
-- [ ] The modal heading still says `Confirm merge`.
-- [ ] The subtitle appears immediately under the heading and is readable at modal width.
-- [ ] Selecting a profile clearly marks that selected card with a `Keep` badge.
-- [ ] Once one profile is selected, the other card clearly displays `Will be removed`.
-- [ ] Before selection, neither card implies that a profile will be removed.
-- [ ] `Confirm merge` remains disabled before selection and enabled after selection.
-- [ ] No API routes, route handlers, merge RPC calls, data models, or backend logic are changed.
-- [ ] No new dependencies are added.
-- [ ] TypeScript passes with `tsc --noEmit`.
-- [ ] Lint passes.
-- [ ] Production build passes.
-
----
-
-## Do NOT Do
-
-- Do not change customer merge API behaviour.
-- Do not change the request body shape for merge confirmation.
-- Do not edit files outside `app/customers/page.tsx`.
-- Do not introduce new components outside this file.
-- Do not add dependencies.
-- Do not rename customer fields or merge suggestion fields.
-- Do not alter tenant scoping or organization logic.
-
----
-
-## Verification Commands
-
-Run all of these before pushing:
-
-```bash
-tsc --noEmit
-npm run lint
-npm run build
+```tsx
+<p className="mt-2 text-sm text-gray-500">
+  Select which profile to <span className="font-medium text-gray-700">keep</span>. Its identity, conversations, and orders are preserved. The other profile will be permanently merged into it and removed.
+</p>
 ```
 
-If this project uses `npx tsc --noEmit` instead of a direct `tsc` binary, use the project-standard command and mention it in the handoff.
+### 2. Add a "Keeping this profile" label to the selected card in `MergeProfileCard`
 
----
+Inside `MergeProfileCard` (line ~911), after the closing `</div>` of the `flex items-start justify-between gap-3` block (which contains the name/email/phone and the radio circle `<span>`), add:
 
-## Suggested Implementation Notes
+```tsx
+{selected && (
+  <p className="mt-2 text-xs font-semibold text-indigo-700 bg-indigo-100 rounded-full px-2 py-0.5 inline-block">
+    Keeping this profile
+  </p>
+)}
+```
 
-- Keep selection state owned by the existing modal state.
-- Pass enough state into `MergeProfileCard` for it to know:
-  - whether this card is selected
-  - whether any card has been selected
-- A simple status prop is fine, for example:
+### 3. Confirm button disabled state — already correct (`disabled={!keepId || submitting}`). Do not change.
 
-  ```ts
-  status: 'idle' | 'keep' | 'remove'
-  ```
+## What NOT to change
+- Merge logic (`confirm` function)
+- API calls (`merge-suggestions/.../confirm` or `/api/customers/manual-merge`)
+- `MergeProfileCard` data display (orders, spend, channels)
+- `ManualMergeModal`
+- Any other component
 
-- Use accessible text, not just color, for the selected and removed states.
-- Keep the whole card clickable if that is the current interaction pattern.
-- Make the status badge layout stable so the card content does not jump awkwardly when a selection is made.
-
----
-
-## Delivery Notes
-
-When done, summarize:
-- the exact UI copy added
-- the selected and unselected card states
-- the verification commands run and their results
+## Verification
+After the change:
+- `npx tsc --noEmit` — no errors
+- `npm run lint` — no errors
+- `npm run build` — builds clean
+- Modal shows explanatory copy below the header before any card is selected
+- Selecting a card shows "Keeping this profile" pill on that card only
+- Clicking the other card moves the pill
+- Confirm button remains disabled until a selection is made
