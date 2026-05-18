@@ -223,6 +223,12 @@ export default function CustomersPage() {
         if (!cancelled) {
           setDetail(null)
           setDetailLoading(false)
+          // Customer no longer exists (e.g. was merged in another session).
+          // Close the panel and reload the list so the stale row disappears.
+          if (res.status === 404) {
+            setSelectedId(null)
+            refreshList()
+          }
         }
         return
       }
@@ -251,6 +257,11 @@ export default function CustomersPage() {
       const payload = await res.json() as CustomerDetail
       setDetail(payload)
       setSelectedId(payload.customer.id)
+    } else if (res.status === 404) {
+      // Profile no longer available (merged or deleted) — close and tidy the list.
+      setDetail(null)
+      setSelectedId(null)
+      refreshList()
     }
     setDetailLoading(false)
   }
