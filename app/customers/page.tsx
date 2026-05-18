@@ -888,9 +888,20 @@ function MergeConfirmModal({
           <h3 className="text-sm font-semibold text-gray-900">Confirm merge</h3>
           <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-50 hover:text-gray-700"><X className="h-4 w-4" /></button>
         </div>
+        <p className="mt-2 text-sm text-gray-500">
+          Choose which profile to keep. The other will be merged into it and permanently removed.
+        </p>
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <MergeProfileCard profile={currentSummary} selected={keepId === current.id} onSelect={() => setKeepId(current.id)} />
-          <MergeProfileCard profile={candidate} selected={keepId === candidate.id} onSelect={() => setKeepId(candidate.id)} />
+          <MergeProfileCard
+            profile={currentSummary}
+            status={!keepId ? 'idle' : keepId === current.id ? 'keep' : 'remove'}
+            onSelect={() => setKeepId(current.id)}
+          />
+          <MergeProfileCard
+            profile={candidate}
+            status={!keepId ? 'idle' : keepId === candidate.id ? 'keep' : 'remove'}
+            onSelect={() => setKeepId(candidate.id)}
+          />
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <button onClick={onClose} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
@@ -908,13 +919,26 @@ function MergeConfirmModal({
   )
 }
 
-function MergeProfileCard({ profile, selected, onSelect }: { profile: CustomerListItem; selected: boolean; onSelect: () => void }) {
+function MergeProfileCard({
+  profile,
+  status,
+  onSelect,
+}: {
+  profile: CustomerListItem
+  status: 'idle' | 'keep' | 'remove'
+  onSelect: () => void
+}) {
+  const selected = status === 'keep'
+
   return (
     <button
       onClick={onSelect}
+      aria-pressed={selected}
       className={cn(
         'rounded-xl border p-4 text-left transition',
-        selected ? 'border-indigo-500 bg-indigo-50 ring-4 ring-indigo-50' : 'border-gray-200 hover:border-gray-300'
+        status === 'keep' && 'border-indigo-500 bg-indigo-50 ring-4 ring-indigo-50',
+        status === 'remove' && 'border-rose-200 bg-rose-50/40 hover:border-rose-300',
+        status === 'idle' && 'border-gray-200 hover:border-gray-300'
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -923,7 +947,21 @@ function MergeProfileCard({ profile, selected, onSelect }: { profile: CustomerLi
           <p className="mt-1 truncate text-xs text-gray-500">{profile.email || 'No email'}</p>
           <p className="truncate text-xs text-gray-500">{profile.phone || 'No phone'}</p>
         </div>
-        <span className={cn('h-4 w-4 rounded-full border', selected ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300')} />
+        {status === 'keep' && (
+          <span className="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+            Keep
+          </span>
+        )}
+        {status === 'remove' && (
+          <span className="shrink-0 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-600">
+            Will be removed
+          </span>
+        )}
+        {status === 'idle' && (
+          <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+            Select
+          </span>
+        )}
       </div>
       <div className="mt-3 flex flex-wrap gap-1">
         {profile.channels.length > 0 ? profile.channels.map(channel => <ChannelBadge key={channel} channel={channel as Channel} />) : <span className="text-xs text-gray-400">No channels</span>}
