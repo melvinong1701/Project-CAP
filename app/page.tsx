@@ -340,6 +340,10 @@ function TelegramSetupModal({ existingStores, onClose, onDone }: TelegramSetupMo
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function Home() {
+  const [requestedConversationId] = useState(() => {
+    if (typeof window === 'undefined') return null
+    return new URLSearchParams(window.location.search).get('conversationId')
+  })
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [stores, setStores] = useState<Store[]>([])
   const [storeNames, setStoreNames] = useState<Record<string, string>>({})
@@ -402,9 +406,13 @@ export default function Home() {
     })
 
     setConversations(mapped)
-    if (!activeConvId && mapped.length > 0) setActiveConvId(mapped[0].id)
+    if (requestedConversationId && mapped.some((conversation: Conversation) => conversation.id === requestedConversationId)) {
+      setActiveConvId(requestedConversationId)
+    } else if (!activeConvId && mapped.length > 0) {
+      setActiveConvId(mapped[0].id)
+    }
     setLoading(false)
-  }, [storeNames, activeConvId])
+  }, [storeNames, activeConvId, requestedConversationId])
 
   // ── Fetch stores for sidebar ──────────────────────────────────────────────
   const fetchStores = useCallback(async () => {

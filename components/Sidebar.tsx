@@ -1,8 +1,8 @@
 'use client'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Store } from '@/lib/types'
 import { ChannelBadge } from './ChannelBadge'
-import { Inbox, BookMarked, UserCheck, Clock, Settings, BarChart3 } from 'lucide-react'
+import { Inbox, BookMarked, UserCheck, Clock, Settings, BarChart3, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface SidebarProps {
@@ -20,6 +20,7 @@ const navItems = [
 
 export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const totalUnread = stores.reduce((sum, s) => sum + s.unreadCount, 0)
 
   return (
@@ -52,25 +53,40 @@ export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) 
           Inbox
         </p>
         <nav className="space-y-0.5 mb-6">
-          {navItems.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => onFilterChange(id)}
-              className={cn(
-                'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
-                activeFilter === id
-                  ? 'bg-indigo-50 text-indigo-700 font-medium'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+          {navItems.map(({ id, label, icon: Icon }, index) => (
+            <div key={id}>
+              <button
+                onClick={() => onFilterChange(id)}
+                className={cn(
+                  'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
+                  pathname === '/' && activeFilter === id
+                    ? 'bg-indigo-50 text-indigo-700 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                )}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{label}</span>
+                {id === 'all' && totalUnread > 0 && (
+                  <span className="ml-auto text-xs font-semibold text-white bg-indigo-500 w-5 h-5 rounded-full flex items-center justify-center">
+                    {totalUnread}
+                  </span>
+                )}
+              </button>
+              {index === 0 && (
+                <button
+                  onClick={() => router.push('/customers')}
+                  className={cn(
+                    'mt-0.5 w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
+                    pathname === '/customers'
+                      ? 'bg-indigo-50 text-indigo-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                  )}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Customers</span>
+                </button>
               )}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{label}</span>
-              {id === 'all' && totalUnread > 0 && (
-                <span className="ml-auto text-xs font-semibold text-white bg-indigo-500 w-5 h-5 rounded-full flex items-center justify-center">
-                  {totalUnread}
-                </span>
-              )}
-            </button>
+            </div>
           ))}
         </nav>
 
