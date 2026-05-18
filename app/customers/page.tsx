@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowRight, Check, Loader2, Search, UserRound, X } from 
 import { Sidebar } from '@/components/Sidebar'
 import { ChannelBadge } from '@/components/ChannelBadge'
 import { Channel } from '@/lib/types'
+import { useStores } from '@/lib/useStores'
 import { cn } from '@/lib/utils'
 
 type CustomerChannel = 'telegram' | 'shopee' | 'lazada' | 'tiktok_shop'
@@ -142,6 +143,7 @@ function displayName(name: string | null | undefined) {
 
 export default function CustomersPage() {
   const router = useRouter()
+  const { stores } = useStores()
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all')
@@ -266,7 +268,7 @@ export default function CustomersPage() {
 
   return (
     <div className="flex overflow-hidden bg-white" style={{ height: '100dvh' }}>
-      <Sidebar stores={[]} activeFilter="" onFilterChange={() => router.push('/')} />
+      <Sidebar stores={stores} activeFilter="" onFilterChange={() => router.push('/')} />
 
       <main className="flex flex-col flex-1 min-w-0 overflow-hidden bg-gray-50">
         <div className="sticky top-0 z-10 border-b border-gray-100 bg-white/90 px-6 py-4 backdrop-blur">
