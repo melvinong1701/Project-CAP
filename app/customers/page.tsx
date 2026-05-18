@@ -841,6 +841,7 @@ function MergeConfirmModal({
 }) {
   const [keepId, setKeepId] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
+  const [mergeError, setMergeError] = useState<string | null>(null)
 
   const currentSummary: CustomerListItem = {
     id: current.id,
@@ -857,27 +858,36 @@ function MergeConfirmModal({
 
   const confirm = async () => {
     if (!keepId) return
+    setMergeError(null)
     setSubmitting(true)
-    const res = suggestionId
-      ? await fetch(`/api/customers/merge-suggestions/${suggestionId}/confirm`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keepId }),
-        })
-      : await fetch('/api/customers/manual-merge', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sourceId: keepId === current.id ? candidate.id : current.id,
-            targetId: keepId,
-          }),
-        })
+    try {
+      const res = suggestionId
+        ? await fetch(`/api/customers/merge-suggestions/${suggestionId}/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keepId }),
+          })
+        : await fetch('/api/customers/manual-merge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceId: keepId === current.id ? candidate.id : current.id,
+              targetId: keepId,
+            }),
+          })
 
-    if (res.ok) {
-      const payload = await res.json() as { survivingCustomerId: string }
-      onMerged(payload.survivingCustomerId)
+      const payload = await res.json().catch(() => ({})) as { error?: string; survivingCustomerId?: string }
+      if (!res.ok) {
+        setMergeError(payload.error ?? 'Failed to merge profiles. Please try again.')
+        return
+      }
+
+      onMerged(payload.survivingCustomerId ?? keepId)
+    } catch {
+      setMergeError('Failed to merge profiles. Please try again.')
+    } finally {
+      setSubmitting(false)
     }
-    setSubmitting(false)
   }
 
   return (
@@ -903,9 +913,15 @@ function MergeConfirmModal({
             onSelect={() => setKeepId(candidate.id)}
           />
         </div>
+        {mergeError && (
+          <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {mergeError}
+          </p>
+        )}
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
+          <button type="button" onClick={onClose} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
           <button
+            type="button"
             onClick={confirm}
             disabled={!keepId || submitting}
             className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -954,7 +970,7 @@ function MergeProfileCard({
         )}
         {status === 'remove' && (
           <span className="shrink-0 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-600">
-            Will be removed
+            Will be absorbed
           </span>
         )}
         {status === 'idle' && (

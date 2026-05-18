@@ -49,6 +49,21 @@ export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) 
           </button>
         </nav>
 
+        <nav className="space-y-0.5 mb-3">
+          <button
+            onClick={() => router.push('/customers')}
+            className={cn(
+              'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
+              pathname === '/customers'
+                ? 'bg-indigo-50 text-indigo-700 font-medium'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+            )}
+          >
+            <Users className="w-4 h-4" />
+            <span>Customers</span>
+          </button>
+        </nav>
+
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 mb-2">
           Inbox
         </p>
@@ -73,21 +88,6 @@ export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) 
               )}
             </button>
           ))}
-        </nav>
-
-        <nav className="space-y-0.5 mb-6">
-          <button
-            onClick={() => router.push('/customers')}
-            className={cn(
-              'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
-              pathname === '/customers'
-                ? 'bg-indigo-50 text-indigo-700 font-medium'
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
-            )}
-          >
-            <Users className="w-4 h-4" />
-            <span>Customers</span>
-          </button>
         </nav>
 
         {/* Stores */}
