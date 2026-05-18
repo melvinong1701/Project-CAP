@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { resolveCustomerIdentity } from '@/lib/identity-resolution'
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -14,6 +15,7 @@ interface ConversationRow {
   channel: string
   external_id: string
   sender_name: string
+  store_id: string | null
 }
 
 interface CustomerRow {
@@ -65,7 +67,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 
     const { data: conversation, error: conversationError } = await supabase
       .from('conversations')
-      .select('id, organization_id, customer_id, channel, external_id, sender_name')
+      .select('id, organization_id, customer_id, channel, external_id, sender_name, store_id')
       .eq('id', conversationId)
       .eq('organization_id', ORG_ID)
       .single<ConversationRow>()
@@ -100,7 +102,9 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
         return NextResponse.json({ error: 'Failed to save contact' }, { status: 500 })
       }
 
-      return NextResponse.json({ customer: mapCustomer(customer) })
+      const resolvedCustomer = await resolveCustomerForResponse(supabase, customer.id, conversation)
+
+      return NextResponse.json({ customer: mapCustomer(resolvedCustomer) })
     }
 
     const { data: customer, error: insertError } = await supabase
@@ -125,9 +129,40 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to link contact' }, { status: 500 })
     }
 
-    return NextResponse.json({ customer: mapCustomer(customer) })
+    const resolvedCustomer = await resolveCustomerForResponse(supabase, customer.id, conversation)
+
+    return NextResponse.json({ customer: mapCustomer(resolvedCustomer) })
   } catch (err) {
     console.error('Customer PATCH error:', err)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
+}
+
+async function resolveCustomerForResponse(
+  supabase: ReturnType<typeof getSupabase>,
+  customerId: string,
+  conversation: ConversationRow
+): Promise<CustomerRow> {
+  const resolution = await resolveCustomerIdentity({
+    supabase,
+    organizationId: ORG_ID,
+    customerId,
+    conversationId: conversation.id,
+    storeId: conversation.store_id,
+    lastContactAt: new Date(),
+  })
+
+  const resolvedCustomerId = resolution.customerId
+  const { data: customer, error } = await supabase
+    .from('customers')
+    .select('id, organization_id, display_name, email, phone, notes, telegram_id, shopee_buyer_id, lazada_buyer_id, tiktok_buyer_id')
+    .eq('id', resolvedCustomerId)
+    .eq('organization_id', ORG_ID)
+    .single<CustomerRow>()
+
+  if (error || !customer) {
+    throw new Error('Resolved customer not found')
+  }
+
+  return customer
 }
