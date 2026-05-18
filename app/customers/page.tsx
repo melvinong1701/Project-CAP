@@ -223,11 +223,10 @@ export default function CustomersPage() {
         if (!cancelled) {
           setDetail(null)
           setDetailLoading(false)
-          // Customer no longer exists (e.g. was merged in another session).
-          // Close the panel and reload the list so the stale row disappears.
           if (res.status === 404) {
             setSelectedId(null)
-            refreshList()
+            // Silently drop the stale row so the list does not flash a full reload.
+            setCustomers(prev => prev.filter(customer => customer.id !== selectedId))
           }
         }
         return
@@ -258,10 +257,9 @@ export default function CustomersPage() {
       setDetail(payload)
       setSelectedId(payload.customer.id)
     } else if (res.status === 404) {
-      // Profile no longer available (merged or deleted) — close and tidy the list.
       setDetail(null)
       setSelectedId(null)
-      refreshList()
+      setCustomers(prev => prev.filter(customer => customer.id !== id))
     }
     setDetailLoading(false)
   }
@@ -494,6 +492,7 @@ function CustomerDetailPanel({
   const [manualMergeOpen, setManualMergeOpen] = useState(false)
   const [mergeCandidate, setMergeCandidate] = useState<CustomerListItem | null>(null)
   const [suggestionId, setSuggestionId] = useState<string | null>(null)
+  const [preselectedKeepId, setPreselectedKeepId] = useState<string | null>(null)
 
   useEffect(() => {
     setForm({
@@ -538,6 +537,7 @@ function CustomerDetailPanel({
     if (!res.ok) return
     const payload = await res.json() as CustomerDetail
     setSuggestionId(suggestion.id)
+    setPreselectedKeepId(null)
     setMergeCandidate({
       id: payload.customer.id,
       displayName: payload.customer.displayName,
@@ -707,9 +707,10 @@ function CustomerDetailPanel({
         <ManualMergeModal
           current={detail.customer}
           onClose={() => setManualMergeOpen(false)}
-          onPick={(candidate) => {
+          onPickWithRole={(candidate, keepId) => {
             setSuggestionId(null)
             setMergeCandidate(candidate)
+            setPreselectedKeepId(keepId)
             setManualMergeOpen(false)
           }}
         />
@@ -720,13 +721,16 @@ function CustomerDetailPanel({
           current={detail.customer}
           candidate={mergeCandidate}
           suggestionId={suggestionId}
+          initialKeepId={preselectedKeepId}
           onClose={() => {
             setMergeCandidate(null)
             setSuggestionId(null)
+            setPreselectedKeepId(null)
           }}
           onMerged={(id) => {
             setMergeCandidate(null)
             setSuggestionId(null)
+            setPreselectedKeepId(null)
             onMergeCompleted(id)
           }}
         />
@@ -764,11 +768,11 @@ function ReadOnly({ label, value }: { label: string; value?: string | null }) {
 function ManualMergeModal({
   current,
   onClose,
-  onPick,
+  onPickWithRole,
 }: {
   current: CustomerProfile
   onClose: () => void
-  onPick: (candidate: CustomerListItem) => void
+  onPickWithRole: (candidate: CustomerListItem, keepId: string) => void
 }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<CustomerListItem[]>([])
@@ -799,7 +803,12 @@ function ManualMergeModal({
       <button aria-label="Close manual merge" className="absolute inset-0 bg-black/30" onClick={onClose} />
       <div className="relative w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900">Merge with another profile</h3>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Merge: {current.displayName?.trim() || 'this profile'}</h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Search for the other profile. Choose whether to keep it or absorb it.
+            </p>
+          </div>
           <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-50 hover:text-gray-700"><X className="h-4 w-4" /></button>
         </div>
         <div className="relative mt-4">
@@ -815,19 +824,41 @@ function ManualMergeModal({
           {loading ? (
             <p className="py-6 text-center text-sm text-gray-500">Searching…</p>
           ) : results.length > 0 ? results.map(result => (
-            <button
+            <div
               key={result.id}
-              onClick={() => onPick(result)}
-              className="flex w-full items-center justify-between gap-3 rounded-xl p-3 text-left hover:bg-gray-50"
+              className="flex w-full items-start justify-between gap-3 rounded-xl p-3 text-left hover:bg-gray-50"
             >
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-gray-900">{displayName(result.displayName)}</p>
                 <p className="truncate text-xs text-gray-400">{result.email || result.phone || result.id}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                  <span>{relativeTime(result.lastContactAt)}</span>
+                  <span>{result.conversationCount} conversations</span>
+                  <span>{result.totalOrders} orders</span>
+                  <span className="flex flex-wrap gap-1">
+                    {result.channels.length > 0
+                      ? result.channels.map(channel => <ChannelBadge key={channel} channel={channel as Channel} />)
+                      : <span className="text-gray-400">No channels</span>}
+                  </span>
+                </div>
               </div>
-              <div className="flex flex-shrink-0 gap-1">
-                {result.channels.map(channel => <ChannelBadge key={channel} channel={channel as Channel} />)}
+              <div className="flex shrink-0 flex-col gap-1">
+                <button
+                  type="button"
+                  onClick={() => onPickWithRole(result, result.id)}
+                  className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700"
+                >
+                  Keep this
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPickWithRole(result, current.id)}
+                  className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Absorb this
+                </button>
               </div>
-            </button>
+            </div>
           )) : (
             <p className="py-6 text-center text-sm text-gray-500">Search for a profile to merge.</p>
           )}
@@ -841,16 +872,18 @@ function MergeConfirmModal({
   current,
   candidate,
   suggestionId,
+  initialKeepId,
   onClose,
   onMerged,
 }: {
   current: CustomerProfile
   candidate: CustomerListItem
   suggestionId: string | null
+  initialKeepId?: string | null
   onClose: () => void
   onMerged: (id: string) => void
 }) {
-  const [keepId, setKeepId] = useState<string>('')
+  const [keepId, setKeepId] = useState<string>(initialKeepId ?? '')
   const [submitting, setSubmitting] = useState(false)
   const [mergeError, setMergeError] = useState<string | null>(null)
 
