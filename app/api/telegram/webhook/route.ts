@@ -235,6 +235,7 @@ export async function POST(req: NextRequest) {
           last_message: text,
           last_message_at: timestamp,
           is_read: false,
+          status: 'open',
         },
         { onConflict: 'store_id,channel,external_id', ignoreDuplicates: false }
       )
@@ -257,8 +258,9 @@ export async function POST(req: NextRequest) {
     // Update last_message + is_read on existing rows (upsert above handles insert, this covers update)
     await supabase
       .from('conversations')
-      .update({ last_message: text, last_message_at: timestamp, is_read: false })
+      .update({ last_message: text, last_message_at: timestamp, is_read: false, status: 'open' })
       .eq('id', conv.id)
+      .eq('organization_id', ORG_ID)
 
     // Insert message
     const { error: msgErr } = await supabase.from('messages').insert({

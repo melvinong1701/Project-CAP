@@ -8,6 +8,7 @@ export type Channel =
   | 'instagram'
 
 export type AiConfidence = 'high' | 'medium' | 'low'
+export type ConversationStatus = 'open' | 'pending' | 'closed'
 
 export type AiSuggestion =
   | {
@@ -71,6 +72,7 @@ export interface Conversation {
   lastMessage: string
   lastMessageAt: Date
   isRead: boolean
+  status: ConversationStatus
   messages: Message[]
   aiSuggestion?: AiSuggestion
   customer?: CustomerContact

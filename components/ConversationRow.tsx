@@ -19,7 +19,8 @@ export function ConversationRow({ conversation, isActive, onClick }: Conversatio
       className={cn(
         'w-full text-left px-4 py-3.5 border-b border-gray-100 hover:bg-gray-50 transition-colors',
         isActive && 'bg-gray-50 border-l-2 border-l-indigo-500',
-        !conversation.isRead && !isActive && 'bg-white'
+        !conversation.isRead && !isActive && 'bg-white',
+        conversation.status === 'closed' && 'bg-gray-50 opacity-70'
       )}
     >
       <div className="flex items-start gap-3">
@@ -60,6 +61,12 @@ export function ConversationRow({ conversation, isActive, onClick }: Conversatio
           <div className="flex items-center gap-1.5 mt-1.5">
             {!conversation.isRead && (
               <span className="w-2 h-2 rounded-full bg-indigo-500 flex-shrink-0" />
+            )}
+            {conversation.status === 'pending' && (
+              <span className="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-full font-medium">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                Pending
+              </span>
             )}
             {hasPendingAi && (
               <span className="inline-flex items-center gap-1 text-xs text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded-full font-medium">

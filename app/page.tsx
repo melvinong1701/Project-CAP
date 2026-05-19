@@ -5,7 +5,7 @@ import { ConversationList } from '@/components/ConversationList'
 import { ConversationDetail } from '@/components/ConversationDetail'
 import { supabase } from '@/lib/supabase'
 import { useStores } from '@/lib/useStores'
-import { AiConfidence, Conversation, CustomerContact, Message, isAiError } from '@/lib/types'
+import { AiConfidence, Conversation, ConversationStatus, CustomerContact, Message, isAiError } from '@/lib/types'
 import { X, Loader2, Check, AlertCircle } from 'lucide-react'
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001'
@@ -24,6 +24,7 @@ interface ConvRow {
   last_message: string | null
   last_message_at: string
   is_read: boolean
+  status: ConversationStatus
   ai_suggestion:
     | { text: string; confidence: string; autoSent: boolean; dismissed?: boolean }
     | { error: string; dismissed: false }
@@ -72,6 +73,7 @@ function mapConv(row: ConvRow, messages: Message[] = []): Conversation {
     lastMessage: row.last_message ?? '',
     lastMessageAt: new Date(row.last_message_at),
     isRead: row.is_read,
+    status: row.status,
     messages,
     aiSuggestion: mapAiSuggestion(row.ai_suggestion),
     tags: row.tags ?? [],
@@ -340,6 +342,8 @@ export default function Home() {
   const activeConvIdRef = useRef<string | null>(null)
   activeConvIdRef.current = activeConvId
   const [activeFilter, setActiveFilter] = useState('all')
+  const [activeStatus, setActiveStatus] = useState<ConversationStatus>('open')
+  const [statusError, setStatusError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [showTelegramSetup, setShowTelegramSetup] = useState(false)
 
@@ -436,6 +440,7 @@ export default function Home() {
                   lastMessage: newMsg.content,
                   lastMessageAt: newMsg.timestamp,
                   isRead: newMsg.sender === 'agent' ? c.isRead : false,
+                  status: newMsg.sender === 'customer' ? 'open' : c.status,
                 }
               }
               if (c.messages.some(m => m.id === newMsg.id)) return c
@@ -445,6 +450,7 @@ export default function Home() {
                 lastMessage: newMsg.content,
                 lastMessageAt: newMsg.timestamp,
                 isRead: newMsg.sender === 'agent' ? c.isRead : false,
+                status: newMsg.sender === 'customer' ? 'open' : c.status,
               }
             })
           )
@@ -518,6 +524,7 @@ export default function Home() {
                     lastMessage: updated.last_message ?? c.lastMessage,
                     lastMessageAt: new Date(updated.last_message_at),
                     isRead: updated.is_read,
+                    status: updated.status,
                     customerId: updated.customer_id ?? c.customerId,
                     aiSuggestion: mapAiSuggestion(updated.ai_suggestion),
                   }
@@ -542,7 +549,7 @@ export default function Home() {
   const hasConnectedChannels = stores.length > 0
 
   // ── Filtering ─────────────────────────────────────────────────────────────
-  const filteredConversations = conversations.filter(c => {
+  const sidebarFilteredConversations = conversations.filter(c => {
     if (activeFilter === 'unread') return !c.isRead
     if (activeFilter === 'assigned') return c.assignedTo === 'You'
     if (activeFilter === 'snoozed') return false
@@ -552,6 +559,12 @@ export default function Home() {
     }
     return true
   })
+  const statusCounts: Record<ConversationStatus, number> = {
+    open: sidebarFilteredConversations.filter(c => c.status === 'open').length,
+    pending: sidebarFilteredConversations.filter(c => c.status === 'pending').length,
+    closed: sidebarFilteredConversations.filter(c => c.status === 'closed').length,
+  }
+  const filteredConversations = sidebarFilteredConversations.filter(c => c.status === activeStatus)
 
   const activeConv = conversations.find(c => c.id === activeConvId) ?? null
 
@@ -694,6 +707,40 @@ export default function Home() {
       .catch(() => {})
   }
 
+  const handleStatusChange = async (convId: string, newStatus: ConversationStatus) => {
+    const previousStatus = conversations.find(c => c.id === convId)?.status
+    if (!previousStatus || previousStatus === newStatus) return
+
+    const wasSelected = activeConvId === convId
+    setStatusError(null)
+    setConversations(prev =>
+      prev.map(c => c.id === convId ? { ...c, status: newStatus } : c)
+    )
+    if (newStatus === 'closed' && wasSelected) {
+      setActiveConvId(null)
+    }
+
+    try {
+      const res = await fetch(`/api/conversations/${convId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      if (!res.ok) {
+        throw new Error('Status update failed')
+      }
+    } catch {
+      setConversations(prev =>
+        prev.map(c => c.id === convId ? { ...c, status: previousStatus } : c)
+      )
+      if (newStatus === 'closed' && wasSelected && activeConvIdRef.current === null) {
+        setActiveConvId(convId)
+      }
+      setStatusError('Could not update conversation status. Please try again.')
+    }
+  }
+
   const handleUpdateCustomer = (convId: string, customer: CustomerContact) => {
     setConversations(prev =>
       prev.map(c =>
@@ -721,6 +768,11 @@ export default function Home() {
           }}
         />
       )}
+      {statusError && (
+        <div className="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-red-100 bg-white px-4 py-2 text-sm text-red-600 shadow-lg">
+          {statusError}
+        </div>
+      )}
 
       <Sidebar
         stores={storesWithCounts}
@@ -729,7 +781,10 @@ export default function Home() {
       />
       <ConversationList
         conversations={filteredConversations}
+        activeStatus={activeStatus}
+        statusCounts={statusCounts}
         activeId={activeConvId}
+        onStatusChange={setActiveStatus}
         onSelect={handleSelect}
       />
       {loading ? (
@@ -746,6 +801,7 @@ export default function Home() {
           onShowAi={handleShowAi}
           onClearAi={handleClearAi}
           onRetryAi={handleRetryAi}
+          onStatusChange={handleStatusChange}
           onUpdateCustomer={handleUpdateCustomer}
         />
       ) : conversations.length === 0 ? (

@@ -22,6 +22,7 @@ export const mockConversations: Conversation[] = [
     lastMessage: 'Hi, when will my order arrive? I placed it 3 days ago.',
     lastMessageAt: minsAgo(5),
     isRead: false,
+    status: 'open',
     tags: ['urgent'],
     order: {
       id: '240513-001',
@@ -57,6 +58,7 @@ export const mockConversations: Conversation[] = [
     lastMessage: 'Can I return this? The size is wrong.',
     lastMessageAt: minsAgo(22),
     isRead: false,
+    status: 'open',
     tags: [],
     order: {
       id: 'LZ-556123',
@@ -98,6 +100,7 @@ export const mockConversations: Conversation[] = [
     lastMessage: 'Is this lamp compatible with a Type G plug?',
     lastMessageAt: minsAgo(45),
     isRead: true,
+    status: 'open',
     tags: [],
     aiSuggestion: {
       text: "Hi Siti! Yes, the lamp comes with a universal adapter that includes Type G (UK/SG) plug support, so it will work perfectly for you. It also supports 100–240V, so no voltage converter needed. Would you like to go ahead with the order?",
@@ -133,6 +136,7 @@ export const mockConversations: Conversation[] = [
     lastMessage: "Thanks! I'll go ahead and place the order.",
     lastMessageAt: minsAgo(120),
     isRead: true,
+    status: 'open',
     assignedTo: 'You',
     tags: [],
     messages: [
@@ -171,6 +175,7 @@ export const mockConversations: Conversation[] = [
     lastMessage: 'My parcel has been stuck in transit for 5 days.',
     lastMessageAt: minsAgo(200),
     isRead: false,
+    status: 'open',
     tags: ['escalated'],
     order: {
       id: 'TG-20048',
@@ -200,6 +205,7 @@ export const mockConversations: Conversation[] = [
     lastMessage: 'Berapa harga untuk beli 3 pasang?',
     lastMessageAt: minsAgo(310),
     isRead: true,
+    status: 'open',
     tags: [],
     aiSuggestion: {
       text: 'Halo Budi! Untuk pembelian 3 pasang, kami ada promosi bundle — total hanya RM 189 (jimat RM 48). Mahu saya bantu proses pesanan sekarang?',

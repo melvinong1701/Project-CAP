@@ -1,14 +1,23 @@
 'use client'
 import { useState } from 'react'
-import { Conversation, isAiError } from '@/lib/types'
+import { Conversation, ConversationStatus, isAiError } from '@/lib/types'
 import { ConversationRow } from './ConversationRow'
 import { Search } from 'lucide-react'
 
 interface ConversationListProps {
   conversations: Conversation[]
+  activeStatus: ConversationStatus
+  statusCounts: Record<ConversationStatus, number>
   activeId: string | null
+  onStatusChange: (status: ConversationStatus) => void
   onSelect: (id: string) => void
 }
+
+const statusTabs: { id: ConversationStatus; label: string }[] = [
+  { id: 'open', label: 'Open' },
+  { id: 'pending', label: 'Pending' },
+  { id: 'closed', label: 'Archive' },
+]
 
 const filters = [
   { id: 'all', label: 'All' },
@@ -17,7 +26,14 @@ const filters = [
   { id: 'needs-review', label: 'Needs review' },
 ]
 
-export function ConversationList({ conversations, activeId, onSelect }: ConversationListProps) {
+export function ConversationList({
+  conversations,
+  activeStatus,
+  statusCounts,
+  activeId,
+  onStatusChange,
+  onSelect,
+}: ConversationListProps) {
   const [search, setSearch] = useState('')
   const [activeFilter, setActiveFilter] = useState('all')
 
@@ -41,6 +57,26 @@ export function ConversationList({ conversations, activeId, onSelect }: Conversa
       {/* Header */}
       <div className="px-4 pt-5 pb-3 border-b border-gray-100">
         <h2 className="text-base font-semibold text-gray-900 mb-3">Inbox</h2>
+
+        {/* Status tabs */}
+        <div className="grid grid-cols-3 gap-1 rounded-lg bg-gray-100 p-1 mb-3">
+          {statusTabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => onStatusChange(tab.id)}
+              className={`flex min-w-0 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                activeStatus === tab.id
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <span className="truncate">{tab.label}</span>
+              <span className={activeStatus === tab.id ? 'text-gray-400' : 'text-gray-400'}>
+                {statusCounts[tab.id]}
+              </span>
+            </button>
+          ))}
+        </div>
 
         {/* Search */}
         <div className="relative mb-3">

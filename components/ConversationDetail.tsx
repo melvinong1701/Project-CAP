@@ -1,12 +1,12 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { Conversation, CustomerContact, Message, isAiError } from '@/lib/types'
+import { Conversation, ConversationStatus, CustomerContact, Message, isAiError } from '@/lib/types'
 import { MessageThread } from './MessageThread'
 import { AiSuggestionPanel } from './AiSuggestionPanel'
 import { ReplyBox } from './ReplyBox'
 import { CustomerPanel } from './CustomerPanel'
 import { ChannelBadge } from './ChannelBadge'
-import { AlertCircle, ChevronRight, SidebarClose, Sparkles } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronRight, Clock3, RotateCcw, SidebarClose, Sparkles } from 'lucide-react'
 
 interface ConversationDetailProps {
   conversation: Conversation
@@ -16,6 +16,7 @@ interface ConversationDetailProps {
   onShowAi: (convId: string) => void
   onClearAi: (convId: string) => void
   onRetryAi: (convId: string) => void
+  onStatusChange: (convId: string, status: ConversationStatus) => void
   onUpdateCustomer: (convId: string, customer: CustomerContact) => void
 }
 
@@ -27,6 +28,7 @@ export function ConversationDetail({
   onShowAi,
   onClearAi,
   onRetryAi,
+  onStatusChange,
   onUpdateCustomer,
 }: ConversationDetailProps) {
   const [replyValue, setReplyValue] = useState('')
@@ -70,6 +72,21 @@ export function ConversationDetail({
     onDismissAi(conversation.id)
   }
 
+  const statusActions = conversation.status === 'open'
+    ? [
+        { label: 'Mark Pending', status: 'pending' as const, icon: Clock3 },
+        { label: 'Resolve', status: 'closed' as const, icon: CheckCircle2 },
+      ]
+    : conversation.status === 'pending'
+      ? [
+          { label: 'Reopen', status: 'open' as const, icon: RotateCcw },
+          { label: 'Resolve', status: 'closed' as const, icon: CheckCircle2 },
+        ]
+      : [
+          { label: 'Reopen', status: 'open' as const, icon: RotateCcw },
+        ]
+  const isClosed = conversation.status === 'closed'
+
   return (
     <div className="flex flex-1 min-w-0 min-h-0">
       {/* Main detail */}
@@ -90,6 +107,19 @@ export function ConversationDetail({
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
+            {statusActions.map(action => {
+              const Icon = action.icon
+              return (
+                <button
+                  key={action.status}
+                  onClick={() => onStatusChange(conversation.id, action.status)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {action.label}
+                </button>
+              )
+            })}
             {conversation.assignedTo && (
               <div className="flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-200 px-2.5 py-1.5 rounded-lg">
                 <div className="w-4 h-4 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 text-[10px] font-bold">
@@ -117,7 +147,7 @@ export function ConversationDetail({
 
         {/* AI suggestion + Reply */}
         <div className="flex-shrink-0 bg-white">
-          {conversation.aiSuggestion && (
+          {!isClosed && conversation.aiSuggestion && (
             isAiError(conversation.aiSuggestion) ? (
               <div className="px-4 pt-2 pb-1 flex items-center gap-2">
                 <span className="text-xs text-gray-400 flex items-center gap-1">
@@ -153,7 +183,19 @@ export function ConversationDetail({
               </div>
             )
           )}
-          <ReplyBox onSend={handleSend} initialValue={replyValue} />
+          {isClosed ? (
+            <div className="border-t border-gray-100 px-4 py-4">
+              <button
+                onClick={() => onStatusChange(conversation.id, 'open')}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-white hover:text-gray-900"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Reopen to reply
+              </button>
+            </div>
+          ) : (
+            <ReplyBox onSend={handleSend} initialValue={replyValue} />
+          )}
         </div>
       </div>
 
