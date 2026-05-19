@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Sidebar } from '@/components/Sidebar'
 import { ConversationList } from '@/components/ConversationList'
 import { ConversationDetail } from '@/components/ConversationDetail'
@@ -337,6 +337,8 @@ export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const { stores, storeNames, rawStores, fetchStores } = useStores()
   const [activeConvId, setActiveConvId] = useState<string | null>(null)
+  const activeConvIdRef = useRef<string | null>(null)
+  activeConvIdRef.current = activeConvId
   const [activeFilter, setActiveFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [showTelegramSetup, setShowTelegramSetup] = useState(false)
@@ -395,11 +397,11 @@ export default function Home() {
     setConversations(mapped)
     if (requestedConversationId && mapped.some((conversation: Conversation) => conversation.id === requestedConversationId)) {
       setActiveConvId(requestedConversationId)
-    } else if (!activeConvId && mapped.length > 0) {
+    } else if (!activeConvIdRef.current && mapped.length > 0) {
       setActiveConvId(mapped[0].id)
     }
     setLoading(false)
-  }, [storeNames, activeConvId, requestedConversationId])
+  }, [storeNames, requestedConversationId])
 
   // ── Load conversations once storeNames are ready ──────────────────────────
   useEffect(() => {

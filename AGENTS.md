@@ -6,6 +6,20 @@ Be direct. No filler. When you finish a task, summarise what you built, what fil
 
 ---
 
+## Coding behaviour
+
+These rules bias toward caution over speed. For trivial tasks, use judgment.
+
+**Think before coding.** State your assumptions explicitly before implementing. If multiple interpretations exist, present them instead of choosing silently. If a simpler approach exists, say so. Push back when warranted. If something is unclear, stop, name what is confusing, and ask.
+
+**Simplicity first.** Write the minimum code that solves the problem. Do not add features beyond what was asked, abstractions for single-use code, speculative configurability, or error handling for impossible scenarios. If a solution is much longer than it needs to be, rewrite it smaller. Ask: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+**Surgical changes.** Touch only what the task requires. Do not improve adjacent code, refactor things that are not broken, or reformat existing style. Match local conventions even if you would normally do it differently. If your change creates unused imports, variables, functions, or other orphans, remove them. Do not remove pre-existing dead code unless asked; mention it instead. Every changed line should trace directly to the request.
+
+**Goal-driven execution.** Convert tasks into verifiable goals before coding. For multi-step work, state a brief plan with checks, for example: "1. Add validation -> verify invalid-input tests fail, then pass." For bug fixes, reproduce the bug with a test or clear manual check before fixing when practical. Keep looping until the stated success criteria are verified.
+
+---
+
 ## What this product is
 
 A unified inbox for SME sellers running 2–5 stores across Shopee, Lazada, TikTok Shop, and WhatsApp. Every message from every channel flows into one inbox. AI handles 60–70% of replies autonomously — auto-sending high-confidence replies, drafting medium-confidence for agent review, escalating low-confidence to a human.
