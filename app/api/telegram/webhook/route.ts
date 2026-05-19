@@ -272,7 +272,7 @@ export async function POST(req: NextRequest) {
     if (msgErr) {
       console.error('Failed to insert message:', msgErr)
     } else {
-      void triggerAiSuggestion({
+      await triggerAiSuggestion({
         supabase,
         conversationId: conv.id,
         storeId,
