@@ -1,5 +1,6 @@
 export type Channel =
   | 'telegram'
+  | 'shopify'
   | 'shopee'
   | 'lazada'
   | 'tiktok_shop'

@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 
 const channelConfig: Record<Channel, { label: string; color: string; bg: string; icon: string }> = {
   telegram: { label: 'Telegram', color: 'text-blue-600', bg: 'bg-blue-50', icon: '✈' },
+  shopify: { label: 'Shopify', color: 'text-emerald-700', bg: 'bg-emerald-50', icon: 'S' },
   shopee: { label: 'Shopee', color: 'text-orange-600', bg: 'bg-orange-50', icon: '🛍' },
   lazada: { label: 'Lazada', color: 'text-purple-600', bg: 'bg-purple-50', icon: '🏪' },
   tiktok_shop: { label: 'TikTok', color: 'text-pink-600', bg: 'bg-pink-50', icon: '♪' },

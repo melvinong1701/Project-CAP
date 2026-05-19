@@ -6,7 +6,7 @@ export type PlatformCapability = {
 }
 
 export type PlatformDef = {
-  id: 'telegram' | 'shopee' | 'lazada' | 'tiktok_shop' | 'tokopedia' | 'whatsapp' | 'line' | 'meta'
+  id: 'telegram' | 'shopify' | 'shopee' | 'lazada' | 'tiktok_shop' | 'tokopedia' | 'whatsapp' | 'line' | 'meta'
   label: string
   logo: string
   color: string
@@ -32,6 +32,33 @@ export const PLATFORMS: PlatformDef[] = [
         key: 'ai_suggest',
         label: 'AI Suggestions',
         description: 'AI drafts replies for agent review',
+        status: 'active',
+      },
+    ],
+  },
+  {
+    id: 'shopify',
+    label: 'Shopify',
+    logo: '/logos/shopify.svg',
+    color: '#95BF47',
+    connectAvailable: false,
+    capabilities: [
+      {
+        key: 'orders',
+        label: 'Orders',
+        description: 'Create inbox events from new Shopify orders',
+        status: 'active',
+      },
+      {
+        key: 'customers',
+        label: 'Customers',
+        description: 'Read customer details for order context',
+        status: 'active',
+      },
+      {
+        key: 'products',
+        label: 'Product Catalogue',
+        description: 'Token is scoped for product sync in Phase 2',
         status: 'active',
       },
     ],
