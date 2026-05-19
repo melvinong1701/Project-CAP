@@ -107,23 +107,47 @@ export async function GET(req: NextRequest) {
   }
 
   const webhookUrl = `${appUrl}/api/shopify/webhook?storeId=${encodeURIComponent(storeId)}`
-  const webhookRes = await fetch(`https://${shop}/admin/api/2026-04/webhooks.json`, {
+  const webhookRes = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Shopify-Access-Token': tokenData.access_token,
     },
     body: JSON.stringify({
-      webhook: {
-        topic: 'orders/create',
-        address: webhookUrl,
-        format: 'json',
+      query: `
+        mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $webhookSubscription: WebhookSubscriptionInput!) {
+          webhookSubscriptionCreate(topic: $topic, webhookSubscription: $webhookSubscription) {
+            webhookSubscription {
+              id
+              topic
+              uri
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+      `,
+      variables: {
+        topic: 'ORDERS_CREATE',
+        webhookSubscription: {
+          uri: webhookUrl,
+        },
       },
     }),
   })
+  const webhookData = await webhookRes.json() as {
+    data?: {
+      webhookSubscriptionCreate?: {
+        userErrors: { field?: string[]; message: string }[]
+      }
+    }
+  }
+  const userErrors = webhookData.data?.webhookSubscriptionCreate?.userErrors ?? []
 
-  if (!webhookRes.ok) {
-    console.error('Failed to register Shopify webhook:', webhookRes.status, webhookRes.statusText)
+  if (!webhookRes.ok || userErrors.length > 0) {
+    console.error('Failed to register Shopify webhook:', userErrors)
     return NextResponse.json({ error: 'Failed to register webhook' }, { status: 502 })
   }
 
