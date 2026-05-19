@@ -147,8 +147,14 @@ export async function GET(req: NextRequest) {
   const userErrors = webhookData.data?.webhookSubscriptionCreate?.userErrors ?? []
 
   if (!webhookRes.ok || userErrors.length > 0) {
-    console.error('Failed to register Shopify webhook:', userErrors)
-    return NextResponse.json({ error: 'Failed to register webhook' }, { status: 502 })
+    console.error('Shopify webhook registration failed:', JSON.stringify({
+      status: webhookRes.status,
+      userErrors,
+      rawData: webhookData,
+    }))
+    const response = NextResponse.redirect(`${appUrl}/?shopify_warning=webhook_failed`)
+    response.cookies.set('shopify_oauth_state', '', { maxAge: 0, path: '/' })
+    return response
   }
 
   const response = NextResponse.redirect(`${appUrl}/`)
