@@ -10,12 +10,14 @@ import { cn } from '@/lib/utils'
 import { ChannelBadge } from '@/components/ChannelBadge'
 import { Sidebar } from '@/components/Sidebar'
 import { getDashboardData } from '@/lib/dashboardData'
+import { useStores } from '@/lib/useStores'
 
 type Range = '24h' | '7d' | '30d'
 type DashData = ReturnType<typeof getDashboardData>
 
 export default function DashboardPage() {
   const [range, setRange] = useState<Range>('7d')
+  const { stores } = useStores()
 
   const data = useMemo(() => getDashboardData(range), [range])
   const {
@@ -33,7 +35,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex bg-gray-50" style={{ height: '100dvh' }}>
-      <Sidebar stores={[]} activeFilter="" onFilterChange={() => {}} />
+      <Sidebar stores={stores} activeFilter="" onFilterChange={() => {}} />
 
       <div className="flex-1 overflow-y-auto">
         {/* ─── Header ─────────────────────────────────────────────────── */}

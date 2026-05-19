@@ -4,7 +4,8 @@ import { Sidebar } from '@/components/Sidebar'
 import { ConversationList } from '@/components/ConversationList'
 import { ConversationDetail } from '@/components/ConversationDetail'
 import { supabase } from '@/lib/supabase'
-import { AiConfidence, Conversation, CustomerContact, Message, Store, isAiError } from '@/lib/types'
+import { useStores } from '@/lib/useStores'
+import { AiConfidence, Conversation, CustomerContact, Message, isAiError } from '@/lib/types'
 import { X, Loader2, Check, AlertCircle } from 'lucide-react'
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001'
@@ -52,17 +53,6 @@ interface MsgRow {
   content: string
   timestamp: string
   external_id: string | null
-}
-
-interface StorePlatformRow {
-  store_id: string
-  platform_id: string
-  account_label: string | null
-}
-
-interface StoreRow {
-  id: string
-  name: string
 }
 
 type SuggestResponse = { data?: { text: string; confidence: string }; error?: string }
@@ -345,14 +335,11 @@ export default function Home() {
     return new URLSearchParams(window.location.search).get('conversationId')
   })
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [stores, setStores] = useState<Store[]>([])
-  const [storeNames, setStoreNames] = useState<Record<string, string>>({})
+  const { stores, storeNames, rawStores, fetchStores } = useStores()
   const [activeConvId, setActiveConvId] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [showTelegramSetup, setShowTelegramSetup] = useState(false)
-  // Raw store list for the quick-connect modal (id + name pairs)
-  const [rawStores, setRawStores] = useState<{ id: string; name: string }[]>([])
 
   // ── Fetch all conversations + their messages ──────────────────────────────
   const fetchConversations = useCallback(async () => {
@@ -413,41 +400,6 @@ export default function Home() {
     }
     setLoading(false)
   }, [storeNames, activeConvId, requestedConversationId])
-
-  // ── Fetch stores for sidebar ──────────────────────────────────────────────
-  const fetchStores = useCallback(async () => {
-    const { data: storeRows } = await supabase
-      .from('stores')
-      .select('id, name')
-      .eq('organization_id', ORG_ID)
-
-    const storeIds = (storeRows ?? []).map((s: StoreRow) => s.id)
-    const { data: platformRows } = storeIds.length
-      ? await supabase
-          .from('store_platforms')
-          .select('store_id, platform_id, account_label')
-          .in('store_id', storeIds)
-      : { data: [] as StorePlatformRow[] }
-
-    const names: Record<string, string> = {}
-    ;(storeRows ?? []).forEach((s: StoreRow) => { names[s.id] = s.name })
-    setStoreNames(names)
-    setRawStores((storeRows ?? []).map((s: StoreRow) => ({ id: s.id, name: s.name })))
-
-    // Build sidebar stores from store_platforms (one entry per connected channel per store)
-    const sidebarStores: Store[] = (platformRows ?? []).map((p: StorePlatformRow) => ({
-      id: `${p.store_id}:${p.platform_id}`,
-      name: names[p.store_id] ?? p.account_label ?? 'Store',
-      channel: p.platform_id as Store['channel'],
-      unreadCount: 0,
-    }))
-
-    setStores(sidebarStores)
-  }, [])
-
-  useEffect(() => {
-    fetchStores()
-  }, [fetchStores])
 
   // ── Load conversations once storeNames are ready ──────────────────────────
   useEffect(() => {

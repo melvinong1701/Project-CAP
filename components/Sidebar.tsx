@@ -1,8 +1,8 @@
 'use client'
 import { usePathname, useRouter } from 'next/navigation'
-import { Store } from '@/lib/types'
+import type { Store } from '@/lib/types'
 import { ChannelBadge } from './ChannelBadge'
-import { Inbox, BookMarked, UserCheck, Clock, Settings, BarChart3, Users } from 'lucide-react'
+import { Inbox, BookMarked, UserCheck, Clock, Settings, BarChart3, Users, Store as StoreIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface SidebarProps {
@@ -123,10 +123,20 @@ export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) 
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
                 )}
               >
-                <ChannelBadge channel={store.channel} />
-                <span className="truncate">{store.name}</span>
+                <span
+                  className={cn(
+                    'flex h-6 w-6 shrink-0 items-center justify-center rounded-md border',
+                    activeFilter === `store:${store.id}`
+                      ? 'border-indigo-100 bg-white text-indigo-600'
+                      : 'border-gray-100 bg-gray-50 text-gray-400'
+                  )}
+                >
+                  <StoreIcon className="h-3.5 w-3.5" />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-left">{store.name}</span>
+                <ChannelBadge channel={store.channel} className="shrink-0" />
                 {store.unreadCount > 0 && (
-                  <span className="ml-auto text-xs font-semibold text-indigo-600 bg-indigo-50 w-5 h-5 rounded-full flex items-center justify-center">
+                  <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 w-5 h-5 rounded-full flex items-center justify-center">
                     {store.unreadCount}
                   </span>
                 )}
