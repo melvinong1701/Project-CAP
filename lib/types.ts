@@ -85,6 +85,6 @@ export interface Conversation {
 export interface Store {
   id: string
   name: string
-  channel: Channel
+  channels: Channel[]
   unreadCount: number
 }

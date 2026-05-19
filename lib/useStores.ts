@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Store } from '@/lib/types'
+import { Channel, Store } from '@/lib/types'
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -15,6 +15,19 @@ interface StorePlatformRow {
   store_id: string
   platform_id: string
   account_label: string | null
+}
+
+function isChannel(value: string): value is Channel {
+  return [
+    'telegram',
+    'shopify',
+    'shopee',
+    'lazada',
+    'tiktok_shop',
+    'whatsapp',
+    'facebook_messenger',
+    'instagram',
+  ].includes(value)
 }
 
 export function useStores(): {
@@ -51,10 +64,19 @@ export function useStores(): {
     setStoreNames(names)
     setRawStores((storeRows ?? []).map(store => ({ id: store.id, name: store.name })))
 
-    const sidebarStores: Store[] = (platformRows ?? []).map(platform => ({
-      id: `${platform.store_id}:${platform.platform_id}`,
-      name: names[platform.store_id] ?? platform.account_label ?? 'Store',
-      channel: platform.platform_id as Store['channel'],
+    const channelsByStore = new Map<string, Channel[]>()
+    ;(platformRows ?? []).forEach(platform => {
+      if (!isChannel(platform.platform_id)) return
+
+      const channels = channelsByStore.get(platform.store_id) ?? []
+      if (!channels.includes(platform.platform_id)) channels.push(platform.platform_id)
+      channelsByStore.set(platform.store_id, channels)
+    })
+
+    const sidebarStores: Store[] = (storeRows ?? []).map(store => ({
+      id: store.id,
+      name: store.name,
+      channels: channelsByStore.get(store.id) ?? [],
       unreadCount: 0,
     }))
 

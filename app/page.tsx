@@ -540,13 +540,12 @@ export default function Home() {
 
   // ── Unread counts for sidebar ─────────────────────────────────────────────
   const storesWithCounts = stores.map(store => {
-    const storeId = store.id.split(':')[0]
     return {
       ...store,
-      unreadCount: conversations.filter(c => c.storeId === storeId && !c.isRead).length,
+      unreadCount: conversations.filter(c => c.storeId === store.id && !c.isRead).length,
     }
   })
-  const hasConnectedChannels = stores.length > 0
+  const hasConnectedChannels = stores.some(store => store.channels.length > 0)
 
   // ── Filtering ─────────────────────────────────────────────────────────────
   const sidebarFilteredConversations = conversations.filter(c => {

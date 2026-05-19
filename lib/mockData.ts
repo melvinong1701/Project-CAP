@@ -4,10 +4,10 @@ const now = new Date()
 const minsAgo = (n: number) => new Date(now.getTime() - n * 60 * 1000)
 
 export const mockStores: Store[] = [
-  { id: 'store-1', name: 'TechGadgets SG', channel: 'shopee', unreadCount: 0 },
-  { id: 'store-2', name: 'StyleHub MY', channel: 'lazada', unreadCount: 0 },
-  { id: 'store-3', name: 'HomeLiving Co', channel: 'tiktok_shop', unreadCount: 0 },
-  { id: 'store-4', name: 'Support Bot', channel: 'telegram', unreadCount: 0 },
+  { id: 'store-1', name: 'TechGadgets SG', channels: ['shopee'], unreadCount: 0 },
+  { id: 'store-2', name: 'StyleHub MY', channels: ['lazada'], unreadCount: 0 },
+  { id: 'store-3', name: 'HomeLiving Co', channels: ['tiktok_shop'], unreadCount: 0 },
+  { id: 'store-4', name: 'Support Bot', channels: ['telegram'], unreadCount: 0 },
 ]
 
 export const mockConversations: Conversation[] = [

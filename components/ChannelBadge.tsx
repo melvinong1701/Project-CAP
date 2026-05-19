@@ -31,7 +31,7 @@ export function ChannelBadge({ channel, showLabel = false, size = 'sm', classNam
         className
       )}
     >
-      <span>{config.icon}</span>
+      {!showLabel && <span>{config.icon}</span>}
       {showLabel && <span>{config.label}</span>}
     </span>
   )
