@@ -49,6 +49,7 @@ export interface SuggestReplyInput {
   organizationId: string
   channel: Channel
   latestMessage: string
+  currentBlock?: string[]
   customerName?: string
   conversationHistory?: ConversationContextMessage[]
   retrievedContext?: RetrievedContextSnippet[]
@@ -241,6 +242,20 @@ function asConfidence(value: unknown): AiConfidence {
   return value === 'high' || value === 'medium' || value === 'low' ? value : 'low'
 }
 
+function extractCurrentBlock(messages: ConversationContextMessage[]): string[] {
+  const block: string[] = []
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].sender !== 'customer') {
+      break
+    }
+
+    block.unshift(messages[i].content)
+  }
+
+  return block.slice(-5)
+}
+
 function shouldEscalateFromPreprocessing(result: Pick<PreprocessingResult, 'intent' | 'sentiment' | 'urgency'>): boolean {
   return (
     (result.sentiment === 'negative' && result.urgency === 'high') ||
@@ -342,6 +357,7 @@ export function buildPreprocessingResult(input: RawPreprocessingOutput): Preproc
 }
 
 export async function preprocessMessage(input: SuggestReplyInput): Promise<PreprocessingResult> {
+  const currentBlock = input.currentBlock ?? extractCurrentBlock(input.conversationHistory ?? [])
   const system = [
     'You are the Queue 1 preprocessing router for Project Cap.',
     'Return JSON only.',
@@ -357,6 +373,7 @@ export async function preprocessMessage(input: SuggestReplyInput): Promise<Prepr
     system,
     user: {
       latestMessage: input.latestMessage,
+      currentBlock: currentBlock.length > 0 ? currentBlock : null,
       channel: input.channel,
       customerName: input.customerName,
       recentHistory: input.conversationHistory?.slice(-4) ?? [],
@@ -396,12 +413,18 @@ async function runReplyGeneration(params: {
       : 'This is a default generation using gpt-5.4-mini for normal support replies.',
   ].join(' ')
 
-  const chatHistory: OpenAiChatMessage[] = (params.input.conversationHistory ?? [])
-    .slice(0, -1)
-    .map((message) => ({
-      role: message.sender === 'customer' ? 'user' : 'assistant',
-      content: message.content,
-    }))
+  const history = params.input.conversationHistory ?? []
+  const block = params.input.currentBlock ?? extractCurrentBlock(history)
+  const hasBlock = block.length > 0
+  const blockSize = hasBlock ? block.length : 1
+  const priorHistory = history.slice(0, history.length - blockSize)
+  const chatHistory: OpenAiChatMessage[] = priorHistory.map((message) => ({
+    role: message.sender === 'customer' ? 'user' : 'assistant',
+    content: message.content,
+  }))
+  const userTurnContent = hasBlock
+    ? block.join('\n')
+    : params.input.latestMessage
 
   const contextPayload = [
     params.input.retrievedContext?.length
@@ -423,7 +446,7 @@ async function runReplyGeneration(params: {
           : `${systemPrompt}\n\n---\n\n${responseInstructions}`,
       },
       ...chatHistory,
-      { role: 'user', content: params.input.latestMessage },
+      { role: 'user', content: userTurnContent },
     ],
     maxCompletionTokens: 600,
   })

@@ -78,6 +78,20 @@ function toContextMessages(messages: MessageRow[] | null): ConversationContextMe
     }))
 }
 
+function extractCurrentBlock(messages: ConversationContextMessage[]): ConversationContextMessage[] {
+  const block: ConversationContextMessage[] = []
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].sender !== 'customer') {
+      break
+    }
+
+    block.unshift(messages[i])
+  }
+
+  return block
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as SuggestRequestBody
@@ -148,11 +162,15 @@ export async function POST(req: NextRequest) {
       return jsonAiError('pipeline_error')
     }
 
+    const currentBlock = extractCurrentBlock(history)
     const suggestInput: SuggestReplyInput = {
       organizationId: ORG_ID,
       channel: conversation?.channel ?? 'telegram',
       customerName: conversation?.sender_name ?? undefined,
       latestMessage,
+      currentBlock: currentBlock.length > 0
+        ? currentBlock.slice(-5).map(message => message.content)
+        : undefined,
       conversationHistory: history,
       retrievedContext: body.retrievedContext ?? [],
       storeConfig,
