@@ -69,6 +69,7 @@ export interface PreprocessingResult {
 export interface SuggestReplyResult {
   text: string
   confidence: AiConfidence
+  autoSent: boolean
 }
 
 interface ReplyResult {
@@ -408,16 +409,13 @@ async function runReplyGeneration(params: {
     'Keep the customer-facing reply concise, normally 1-3 sentences.',
     'confidence must be high, medium, or low.',
     'autoSent may be true only when confidence is high and the answer is factual/routine.',
-    isEscalation
-      ? 'This is an escalation-tier generation using gpt-5.4 for higher-risk support cases.'
-      : 'This is a default generation using gpt-5.4-mini for normal support replies.',
   ].join(' ')
 
   const history = params.input.conversationHistory ?? []
   const block = params.input.currentBlock ?? extractCurrentBlock(history)
   const hasBlock = block.length > 0
   const blockSize = hasBlock ? block.length : 1
-  const priorHistory = history.slice(0, history.length - blockSize)
+  const priorHistory = history.slice(0, history.length - blockSize).slice(-4)
   const chatHistory: OpenAiChatMessage[] = priorHistory.map((message) => ({
     role: message.sender === 'customer' ? 'user' : 'assistant',
     content: message.content,
@@ -428,26 +426,40 @@ async function runReplyGeneration(params: {
 
   const contextPayload = [
     params.input.retrievedContext?.length
-      ? `Retrieved supporting context:\n${JSON.stringify(params.input.retrievedContext.slice(0, 5))}`
+      ? [
+          'Product catalog matches:',
+          ...params.input.retrievedContext.slice(0, 5).map((snippet) =>
+            `- ${snippet.title}${snippet.content ? ` — ${snippet.content}` : ''}`
+          ),
+        ].join('\n')
       : null,
-    `Preprocessing:\n${JSON.stringify(params.preprocessing)}`,
+    `Preprocessing: intent=${params.preprocessing.intent}, language=${params.preprocessing.language}`,
+    isEscalation
+      ? 'Generation tier: escalation using gpt-5.4 for higher-risk support cases.'
+      : 'Generation tier: default using gpt-5.4-mini for normal support replies.',
     params.escalationReason ? `Escalation reason: ${params.escalationReason}` : null,
     `Channel: ${params.input.channel}`,
     params.input.customerName ? `Customer name: ${params.input.customerName}` : null,
   ].filter((item): item is string => Boolean(item))
 
+  const systemContent = `${systemPrompt}\n\n---\n\n${responseInstructions}`
+  const messages: OpenAiChatMessage[] = [
+    { role: 'system', content: systemContent },
+  ]
+
+  if (contextPayload.length) {
+    messages.push({
+      role: 'user',
+      content: `[Context for this turn]\n\n${contextPayload.join('\n\n')}`,
+    })
+  }
+
+  messages.push(...chatHistory)
+  messages.push({ role: 'user', content: userTurnContent })
+
   const raw = await callOpenAiMessagesJson({
     model: params.model,
-    messages: [
-      {
-        role: 'system',
-        content: contextPayload.length
-          ? `${systemPrompt}\n\n---\n\n${responseInstructions}\n\n${contextPayload.join('\n\n')}`
-          : `${systemPrompt}\n\n---\n\n${responseInstructions}`,
-      },
-      ...chatHistory,
-      { role: 'user', content: userTurnContent },
-    ],
+    messages,
     maxCompletionTokens: 600,
   })
 
@@ -480,5 +492,6 @@ export async function suggestReply(
   return {
     text: result.text,
     confidence: result.confidence,
+    autoSent: result.autoSent,
   }
 }

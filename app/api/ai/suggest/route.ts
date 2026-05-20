@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import {
+  type AiIntent,
   preprocessMessage,
   suggestReply,
   type ConversationContextMessage,
@@ -12,6 +13,9 @@ import {
 import type { Channel } from '@/lib/types'
 
 const ORG_ID = '00000000-0000-0000-0000-000000000001'
+const CATALOG_INTENTS = new Set<AiIntent>(['product_question', 'pricing', 'availability'])
+
+export const dynamic = 'force-dynamic'
 
 interface SuggestRequestBody {
   conversationId?: string
@@ -40,6 +44,56 @@ function getSupabase() {
     throw new Error('Supabase credentials not configured — set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel env vars')
   }
   return createClient(supabaseUrl, supabaseKey)
+}
+
+interface ProductRow {
+  title: string
+  product_type: string | null
+  tags: string[] | null
+  status: string | null
+  variants: { title: string; price: string; sku: string | null; availableForSale: boolean }[]
+}
+
+async function fetchCatalogContext(
+  supabase: SupabaseClient,
+  organizationId: string,
+  storeId: string,
+  query: string
+): Promise<RetrievedContextSnippet[]> {
+  const { data, error } = await supabase
+    .rpc('search_store_products', {
+      p_organization_id: organizationId,
+      p_store_id: storeId,
+      p_query: query,
+      p_limit: 4,
+    })
+
+  if (error || !data) {
+    console.error('Catalog search error:', error)
+    return []
+  }
+
+  return (data as ProductRow[]).map((product) => {
+    const variantSummary = product.variants
+      .filter((variant) => variant.availableForSale)
+      .map((variant) => `${variant.title} — ${variant.price}`)
+      .join(', ')
+
+    const content = [
+      product.product_type ? `Type: ${product.product_type}` : null,
+      product.status ? `Status: ${product.status}` : null,
+      product.tags?.length ? `Tags: ${product.tags.join(', ')}` : null,
+      variantSummary ? `Available variants: ${variantSummary}` : 'No variants currently available',
+    ]
+      .filter(Boolean)
+      .join('. ')
+
+    return {
+      title: product.title,
+      content,
+      source: 'product_catalog',
+    }
+  })
 }
 
 type AiSuggestErrorCode = 'pipeline_error' | 'timeout' | 'no_messages'
@@ -163,6 +217,31 @@ export async function POST(req: NextRequest) {
     }
 
     const currentBlock = extractCurrentBlock(history)
+    const preprocessing: PreprocessingResult = await preprocessMessage({
+      organizationId: ORG_ID,
+      channel: conversation?.channel ?? 'telegram',
+      customerName: conversation?.sender_name ?? undefined,
+      latestMessage,
+      currentBlock: currentBlock.length > 0
+        ? currentBlock.slice(-5).map(message => message.content)
+        : undefined,
+      conversationHistory: history,
+      retrievedContext: [],
+      storeConfig,
+    })
+
+    let catalogContext: RetrievedContextSnippet[] = body.retrievedContext ?? []
+    if (
+      catalogContext.length === 0 &&
+      conversation?.store_id &&
+      CATALOG_INTENTS.has(preprocessing.intent)
+    ) {
+      const searchQuery = preprocessing.tags.length > 0
+        ? preprocessing.tags.join(' ')
+        : latestMessage
+      catalogContext = await fetchCatalogContext(supabase, ORG_ID, conversation.store_id, searchQuery)
+    }
+
     const suggestInput: SuggestReplyInput = {
       organizationId: ORG_ID,
       channel: conversation?.channel ?? 'telegram',
@@ -172,11 +251,9 @@ export async function POST(req: NextRequest) {
         ? currentBlock.slice(-5).map(message => message.content)
         : undefined,
       conversationHistory: history,
-      retrievedContext: body.retrievedContext ?? [],
+      retrievedContext: catalogContext,
       storeConfig,
     }
-
-    const preprocessing: PreprocessingResult = await preprocessMessage(suggestInput)
 
     const result = await suggestReply(suggestInput, preprocessing)
 
@@ -184,13 +261,10 @@ export async function POST(req: NextRequest) {
       const { error: updateErr } = await supabase
         .from('conversations')
         .update({
-          // Auto-send via the suggestion panel is intentionally disabled until
-          // store knowledge (RAG) is live and confidence scoring is validated.
-          // When ready, replace false with result.autoSent.
           ai_suggestion: {
             text: result.text,
             confidence: result.confidence,
-            autoSent: false,
+            autoSent: result.autoSent,
             dismissed: false,
           },
         })
