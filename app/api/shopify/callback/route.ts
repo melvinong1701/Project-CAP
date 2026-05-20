@@ -172,6 +172,10 @@ export async function GET(req: NextRequest) {
       return response
     }
 
+    fetch(`${appUrl}/api/shopify/sync-products?storeId=${encodeURIComponent(storeId)}`, {
+      method: 'POST',
+    }).catch(err => console.error('Product sync trigger failed:', err))
+
     const response = NextResponse.redirect(`${appUrl}/`)
     response.cookies.set('shopify_oauth_state', '', { maxAge: 0, path: '/' })
     return response

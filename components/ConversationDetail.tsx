@@ -5,6 +5,7 @@ import { MessageThread } from './MessageThread'
 import { AiSuggestionPanel } from './AiSuggestionPanel'
 import { ReplyBox } from './ReplyBox'
 import { CustomerPanel } from './CustomerPanel'
+import { ShopifyOrderPanel } from './ShopifyOrderPanel'
 import { ChannelBadge } from './ChannelBadge'
 import { AlertCircle, CheckCircle2, ChevronRight, Clock3, RotateCcw, SidebarClose, Sparkles } from 'lucide-react'
 
@@ -86,6 +87,7 @@ export function ConversationDetail({
           { label: 'Reopen', status: 'open' as const, icon: RotateCcw },
         ]
   const isClosed = conversation.status === 'closed'
+  const isShopifyOrder = conversation.channel === 'shopify'
 
   return (
     <div className="flex flex-1 min-w-0 min-h-0">
@@ -147,43 +149,13 @@ export function ConversationDetail({
 
         {/* AI suggestion + Reply */}
         <div className="flex-shrink-0 bg-white">
-          {!isClosed && conversation.aiSuggestion && (
-            isAiError(conversation.aiSuggestion) ? (
-              <div className="px-4 pt-2 pb-1 flex items-center gap-2">
-                <span className="text-xs text-gray-400 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3 text-amber-400" />
-                  AI couldn&apos;t generate a suggestion
-                </span>
-                <button
-                  onClick={() => onRetryAi(conversation.id)}
-                  className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : conversation.aiSuggestion.autoSent ? null : conversation.aiSuggestion.dismissed ? (
-              <div className="px-4 pt-2 pb-1">
-                <button
-                  onClick={() => onShowAi(conversation.id)}
-                  className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1 transition-colors"
-                >
-                  <Sparkles className="w-3 h-3" />
-                  Show AI draft
-                </button>
-              </div>
-            ) : (
-              <div className="px-4 pt-3">
-                <AiSuggestionPanel
-                  suggestion={conversation.aiSuggestion.text}
-                  confidence={conversation.aiSuggestion.confidence}
-                  onSend={handleSendAi}
-                  onEdit={handleEditAi}
-                  onDismiss={() => onDismissAi(conversation.id)}
-                />
-              </div>
-            )
-          )}
-          {isClosed ? (
+          {isShopifyOrder ? (
+            <div className="border-t border-gray-100 px-4 py-4 flex items-center gap-2 text-xs text-gray-400">
+              <span>Shopify orders are view-only.</span>
+              <span className="text-gray-300">·</span>
+              <span>Contact this customer via another channel.</span>
+            </div>
+          ) : isClosed ? (
             <div className="border-t border-gray-100 px-4 py-4">
               <button
                 onClick={() => onStatusChange(conversation.id, 'open')}
@@ -194,7 +166,45 @@ export function ConversationDetail({
               </button>
             </div>
           ) : (
-            <ReplyBox onSend={handleSend} initialValue={replyValue} />
+            <>
+              {conversation.aiSuggestion && (
+                isAiError(conversation.aiSuggestion) ? (
+                  <div className="px-4 pt-2 pb-1 flex items-center gap-2">
+                    <span className="text-xs text-gray-400 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3 text-amber-400" />
+                      AI couldn&apos;t generate a suggestion
+                    </span>
+                    <button
+                      onClick={() => onRetryAi(conversation.id)}
+                      className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : conversation.aiSuggestion.autoSent ? null : conversation.aiSuggestion.dismissed ? (
+                  <div className="px-4 pt-2 pb-1">
+                    <button
+                      onClick={() => onShowAi(conversation.id)}
+                      className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1 transition-colors"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      Show AI draft
+                    </button>
+                  </div>
+                ) : (
+                  <div className="px-4 pt-3">
+                    <AiSuggestionPanel
+                      suggestion={conversation.aiSuggestion.text}
+                      confidence={conversation.aiSuggestion.confidence}
+                      onSend={handleSendAi}
+                      onEdit={handleEditAi}
+                      onDismiss={() => onDismissAi(conversation.id)}
+                    />
+                  </div>
+                )
+              )}
+              <ReplyBox onSend={handleSend} initialValue={replyValue} />
+            </>
           )}
         </div>
       </div>
@@ -202,7 +212,11 @@ export function ConversationDetail({
       {/* Customer panel */}
       {showCustomerPanel && (
         <div className="w-60 flex-shrink-0 border-l border-gray-100 bg-white overflow-y-auto">
-          <CustomerPanel conversation={conversation} onUpdateCustomer={onUpdateCustomer} />
+          {isShopifyOrder ? (
+            <ShopifyOrderPanel conversationId={conversation.id} />
+          ) : (
+            <CustomerPanel conversation={conversation} onUpdateCustomer={onUpdateCustomer} />
+          )}
         </div>
       )}
     </div>
