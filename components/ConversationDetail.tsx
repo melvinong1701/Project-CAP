@@ -38,7 +38,7 @@ export function ConversationDetail({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
-  }, [conversation.id, conversation.messages])
+  }, [conversation.id, conversation.messages, conversation.aiSuggestion])
 
   const handleSend = (text: string) => {
     const newMessage: Message = {
