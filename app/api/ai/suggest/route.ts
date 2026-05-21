@@ -266,6 +266,8 @@ export async function POST(req: NextRequest) {
             confidence: result.confidence,
             autoSent: result.autoSent,
             dismissed: false,
+            reasoning: result.reasoning ?? null,
+            sourceCited: result.sourceCited ?? null,
           },
         })
         .eq('id', body.conversationId)

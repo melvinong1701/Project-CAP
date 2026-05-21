@@ -196,6 +196,8 @@ export function ConversationDetail({
                     <AiSuggestionPanel
                       suggestion={conversation.aiSuggestion.text}
                       confidence={conversation.aiSuggestion.confidence}
+                      reasoning={conversation.aiSuggestion.reasoning}
+                      sourceCited={conversation.aiSuggestion.sourceCited}
                       onSend={handleSendAi}
                       onEdit={handleEditAi}
                       onDismiss={() => onDismissAi(conversation.id)}

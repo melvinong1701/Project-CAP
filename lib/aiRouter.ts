@@ -70,12 +70,16 @@ export interface SuggestReplyResult {
   text: string
   confidence: AiConfidence
   autoSent: boolean
+  reasoning?: string
+  sourceCited?: string | null
 }
 
 interface ReplyResult {
   text: string
   confidence: AiConfidence
   autoSent: boolean
+  reasoning?: string
+  sourceCited?: string | null
   model: typeof AI_MODEL_ROUTER.replyDefault | typeof AI_MODEL_ROUTER.replyEscalation
 }
 
@@ -404,11 +408,14 @@ async function runReplyGeneration(params: {
     buildStoreContext(params.input.storeConfig ?? null),
   ].join('\n\n')
   const responseInstructions = [
-    'Return JSON only with keys: text, confidence, autoSent.',
+    'Return JSON only with keys: text, confidence, autoSent, reasoning, sourceCited.',
     'The text value must be the customer-facing reply only.',
     'Keep the customer-facing reply concise, normally 1-3 sentences.',
     'confidence must be high, medium, or low.',
     'autoSent may be true only when confidence is high and the answer is factual/routine.',
+    'reasoning must be 1 sentence explaining why you assigned this confidence level.',
+    'sourceCited must be exactly one of: "return_policy", "shipping_policy", "custom_instructions", "product_catalog", or null.',
+    'Set sourceCited to the store data field you primarily referenced when generating this reply. If you did not reference any store data, set it to null.',
   ].join(' ')
 
   const history = params.input.conversationHistory ?? []
@@ -469,6 +476,8 @@ async function runReplyGeneration(params: {
     text: asString(raw.text, ''),
     confidence,
     autoSent: raw.autoSent === true && confidence === 'high',
+    reasoning: typeof raw.reasoning === 'string' && raw.reasoning.trim() ? raw.reasoning.trim() : undefined,
+    sourceCited: typeof raw.sourceCited === 'string' && raw.sourceCited.trim() ? raw.sourceCited.trim() : null,
     model: params.model,
   }
 }
@@ -493,5 +502,7 @@ export async function suggestReply(
     text: result.text,
     confidence: result.confidence,
     autoSent: result.autoSent,
+    reasoning: result.reasoning,
+    sourceCited: result.sourceCited,
   }
 }

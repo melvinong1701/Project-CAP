@@ -173,6 +173,8 @@ async function triggerAiSuggestion(params: {
           confidence: result.confidence,
           autoSent: false,
           dismissed: false,
+          reasoning: result.reasoning ?? null,
+          sourceCited: result.sourceCited ?? null,
         },
       })
       .eq('id', params.conversationId)

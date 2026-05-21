@@ -26,7 +26,7 @@ interface ConvRow {
   is_read: boolean
   status: ConversationStatus
   ai_suggestion:
-    | { text: string; confidence: string; autoSent: boolean; dismissed?: boolean }
+    | { text: string; confidence: string; autoSent: boolean; dismissed?: boolean; reasoning?: string; sourceCited?: string | null }
     | { error: string; dismissed: false }
     | null
   tags: string[] | null
@@ -56,7 +56,7 @@ interface MsgRow {
   external_id: string | null
 }
 
-type SuggestResponse = { data?: { text: string; confidence: string }; error?: string }
+type SuggestResponse = { data?: { text: string; confidence: string; reasoning?: string; sourceCited?: string | null }; error?: string }
 
 // ─── Mappers ────────────────────────────────────────────────────────────────
 
@@ -104,6 +104,8 @@ function mapAiSuggestion(row: ConvRow['ai_suggestion']): Conversation['aiSuggest
     confidence: row.confidence as AiConfidence,
     autoSent: row.autoSent,
     dismissed: row.dismissed ?? false,
+    reasoning: row.reasoning,
+    sourceCited: row.sourceCited,
   }
 }
 
@@ -467,7 +469,7 @@ export default function Home() {
                   setConversations(prev =>
                     prev.map(c =>
                       c.id === convId
-                        ? { ...c, aiSuggestion: { text: res.data!.text, confidence: res.data!.confidence as 'high' | 'medium' | 'low', autoSent: false, dismissed: false } }
+                        ? { ...c, aiSuggestion: { text: res.data!.text, confidence: res.data!.confidence as 'high' | 'medium' | 'low', autoSent: false, dismissed: false, reasoning: res.data!.reasoning, sourceCited: res.data!.sourceCited } }
                         : c
                     )
                   )
@@ -644,6 +646,8 @@ export default function Home() {
           confidence: conv.aiSuggestion.confidence,
           autoSent: conv.aiSuggestion.autoSent,
           dismissed: true,
+          reasoning: conv.aiSuggestion.reasoning ?? null,
+          sourceCited: conv.aiSuggestion.sourceCited ?? null,
         },
       })
       .eq('id', convId)
@@ -668,6 +672,8 @@ export default function Home() {
           confidence: conv.aiSuggestion.confidence,
           autoSent: conv.aiSuggestion.autoSent,
           dismissed: false,
+          reasoning: conv.aiSuggestion.reasoning ?? null,
+          sourceCited: conv.aiSuggestion.sourceCited ?? null,
         },
       })
       .eq('id', convId)
@@ -696,6 +702,8 @@ export default function Home() {
                       confidence: res.data!.confidence as AiConfidence,
                       autoSent: false,
                       dismissed: false,
+                      reasoning: res.data!.reasoning,
+                      sourceCited: res.data!.sourceCited,
                     },
                   }
                 : c

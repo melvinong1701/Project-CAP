@@ -17,6 +17,8 @@ export type AiSuggestion =
       confidence: AiConfidence
       autoSent: boolean
       dismissed: boolean
+      reasoning?: string
+      sourceCited?: string | null
     }
   | {
       error: string
