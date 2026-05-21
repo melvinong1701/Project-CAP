@@ -35,10 +35,32 @@ export function ConversationDetail({
   const [replyValue, setReplyValue] = useState('')
   const [showCustomerPanel, setShowCustomerPanel] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const prevSuggestionKeyRef = useRef<string | null>(null)
 
+  // Scroll to bottom when conversation changes or new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
-  }, [conversation.id, conversation.messages, conversation.aiSuggestion])
+  }, [conversation.id, conversation.messages])
+
+  // Scroll to bottom when a NEW AI suggestion first appears — but only if the user
+  // is already near the bottom (i.e. hasn't manually scrolled up to read old messages)
+  useEffect(() => {
+    const suggestionKey = conversation.aiSuggestion && !isAiError(conversation.aiSuggestion)
+      ? conversation.aiSuggestion.text
+      : null
+    const isNewSuggestion = suggestionKey !== null && suggestionKey !== prevSuggestionKeyRef.current
+    prevSuggestionKeyRef.current = suggestionKey
+
+    if (!isNewSuggestion) return
+
+    const el = scrollContainerRef.current
+    if (!el) return
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    if (isNearBottom) {
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80)
+    }
+  }, [conversation.aiSuggestion])
 
   const handleSend = (text: string) => {
     const newMessage: Message = {
@@ -142,7 +164,7 @@ export function ConversationDetail({
         </div>
 
         {/* Messages */}
-        <div className="flex-1 min-h-0 overflow-y-auto bg-white">
+        <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto bg-white">
           <MessageThread messages={conversation.messages} />
           <div ref={messagesEndRef} />
         </div>
