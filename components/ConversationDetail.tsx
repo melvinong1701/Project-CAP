@@ -43,8 +43,9 @@ export function ConversationDetail({
     messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
   }, [conversation.id, conversation.messages])
 
-  // Scroll to bottom when a NEW AI suggestion first appears — but only if the user
-  // is already near the bottom (i.e. hasn't manually scrolled up to read old messages)
+  // Scroll to bottom when a NEW AI suggestion first appears.
+  // The panel appearing shrinks clientHeight before this effect fires, so a near-bottom
+  // check can race against layout. Delay briefly so the panel finishes rendering first.
   useEffect(() => {
     const suggestionKey = conversation.aiSuggestion && !isAiError(conversation.aiSuggestion)
       ? conversation.aiSuggestion.text
@@ -53,13 +54,7 @@ export function ConversationDetail({
     prevSuggestionKeyRef.current = suggestionKey
 
     if (!isNewSuggestion) return
-
-    const el = scrollContainerRef.current
-    if (!el) return
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
-    if (isNearBottom) {
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80)
-    }
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 80)
   }, [conversation.aiSuggestion])
 
   const handleSend = (text: string) => {
