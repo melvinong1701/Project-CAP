@@ -264,7 +264,7 @@ export async function POST(req: NextRequest) {
           ai_suggestion: {
             text: result.text,
             confidence: result.confidence,
-            autoSent: result.autoSent,
+            autoSent: false, // auto-send not yet implemented — never persist true until the pipeline is built
             dismissed: false,
             reasoning: result.reasoning ?? null,
             sourceCited: result.sourceCited ?? null,
