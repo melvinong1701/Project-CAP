@@ -64,48 +64,33 @@ export default function LoginPage() {
       return
     }
 
-    const { data, error: signupError } = await supabase.auth.signUp({
+    const res = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: trimmedEmail, password, orgName: trimmedOrgName }),
+    })
+
+    const body: { error?: string; requiresConfirmation?: boolean } = await res.json()
+
+    if (!res.ok) {
+      setError(body.error ?? 'Signup failed.')
+      setLoading(false)
+      return
+    }
+
+    if (body.requiresConfirmation) {
+      setSuccess('Check your email to confirm your account before signing in.')
+      setLoading(false)
+      return
+    }
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email: trimmedEmail,
       password,
     })
 
-    if (signupError) {
-      setError(signupError.message)
-      setLoading(false)
-      return
-    }
-
-    const userId = data.user?.id
-    if (!userId) {
-      setError('Signup failed — please try again.')
-      setLoading(false)
-      return
-    }
-
-    const { data: org, error: orgErr } = await supabase
-      .from('organizations')
-      .insert({ name: trimmedOrgName })
-      .select('id')
-      .single()
-
-    if (orgErr || !org) {
-      setError('Failed to create organization.')
-      setLoading(false)
-      return
-    }
-
-    const { error: profileErr } = await supabase
-      .from('user_profiles')
-      .insert({ id: userId, organization_id: org.id, role: 'admin', email: trimmedEmail })
-
-    if (profileErr) {
-      setError('Failed to link user to organization.')
-      setLoading(false)
-      return
-    }
-
-    if (!data.session) {
-      setSuccess('Check your email to confirm your account before signing in.')
+    if (signInError) {
+      setError(signInError.message)
       setLoading(false)
       return
     }

@@ -5,6 +5,7 @@ const PUBLIC_PATHS = [
   '/login',
   '/auth/callback',
   '/auth/reset-password',
+  '/api/auth/signup',
   '/api/telegram/webhook',
   '/api/shopify/webhook',
   '/api/shopify/install',
