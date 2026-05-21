@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  ORG_ID,
   compactSearchTerm,
   customerSelect,
   getSupabaseAdmin,
@@ -8,6 +7,7 @@ import {
   type CustomerRow,
   type MergeSuggestionRow,
 } from './_utils'
+import { requireAuth } from '@/lib/getOrgId'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +20,10 @@ const channelColumns: Record<string, keyof Pick<CustomerRow, 'telegram_id' | 'sh
 
 export async function GET(req: NextRequest) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const { searchParams } = new URL(req.url)
     const q = compactSearchTerm(searchParams.get('q') ?? '')
     const channel = searchParams.get('channel')

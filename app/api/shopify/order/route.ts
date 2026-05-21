@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
+import { requireAuth } from '@/lib/getOrgId'
 
 export const dynamic = 'force-dynamic'
 
@@ -82,6 +81,10 @@ const ORDER_QUERY = `
 
 export async function GET(req: NextRequest) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const { searchParams } = new URL(req.url)
     const conversationId = searchParams.get('conversationId')
 

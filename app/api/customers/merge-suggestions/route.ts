@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  ORG_ID,
   customerSelect,
   getSupabaseAdmin,
   mapCustomerSummary,
   type CustomerRow,
   type MergeSuggestionRow,
 } from '../_utils'
+import { requireAuth } from '@/lib/getOrgId'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const { searchParams } = new URL(req.url)
     const page = Math.max(Number(searchParams.get('page') ?? '1') || 1, 1)
     const perPage = Math.min(Math.max(Number(searchParams.get('per_page') ?? '20') || 20, 1), 100)

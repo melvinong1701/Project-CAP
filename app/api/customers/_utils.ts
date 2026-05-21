@@ -1,7 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-export const ORG_ID = '00000000-0000-0000-0000-000000000001'
-
 export type CustomerChannel = 'telegram' | 'shopee' | 'lazada' | 'tiktok_shop'
 
 export interface CustomerRow {

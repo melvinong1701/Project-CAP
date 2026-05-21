@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireAuth } from '@/lib/getOrgId'
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -10,10 +11,12 @@ function getSupabase() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
-
 export async function POST(req: NextRequest) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const supabase = getSupabase()
     const { conversationId, text } = await req.json() as { conversationId: string; text: string }
 
@@ -26,6 +29,7 @@ export async function POST(req: NextRequest) {
       .from('conversations')
       .select('id, external_id, store_id, channel')
       .eq('id', conversationId)
+      .eq('organization_id', ORG_ID)
       .single()
 
     if (convErr || !conv) {
@@ -41,6 +45,7 @@ export async function POST(req: NextRequest) {
       .from('store_platforms')
       .select('bot_token')
       .eq('store_id', conv.store_id)
+      .eq('organization_id', ORG_ID)
       .eq('platform_id', 'telegram')
       .single()
 
@@ -78,6 +83,7 @@ export async function POST(req: NextRequest) {
       .from('conversations')
       .update({ last_message: text, last_message_at: now, is_read: true })
       .eq('id', conversationId)
+      .eq('organization_id', ORG_ID)
 
     return NextResponse.json({ ok: true })
   } catch (err) {

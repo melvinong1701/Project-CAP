@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
+import { requireAuth } from '@/lib/getOrgId'
 
 interface StoreAiConfigBody {
   storeId?: unknown
@@ -31,6 +30,10 @@ const requiredString = (value: unknown) => typeof value === 'string'
 
 export async function GET(req: NextRequest) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const { searchParams } = new URL(req.url)
     const storeId = searchParams.get('storeId')
 
@@ -60,6 +63,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const body = await req.json() as StoreAiConfigBody
     const {
       storeId,

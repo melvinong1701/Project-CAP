@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ORG_ID, getSupabaseAdmin, isUuid } from '../_utils'
+import { getSupabaseAdmin, isUuid } from '../_utils'
+import { requireAuth } from '@/lib/getOrgId'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const body = await req.json() as Record<string, unknown>
     const { sourceId, targetId } = body
 

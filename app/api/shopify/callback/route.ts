@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 
+// TODO: replace this with organization_id from a signed OAuth state once Shopify install starts from an authenticated store settings flow.
 const ORG_ID = '00000000-0000-0000-0000-000000000001'
 
 export const dynamic = 'force-dynamic'

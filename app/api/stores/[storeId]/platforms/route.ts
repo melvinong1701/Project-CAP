@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
+import { requireAuth } from '@/lib/getOrgId'
 
 interface StorePlatformRow {
   id: string
@@ -28,6 +27,10 @@ export async function GET(
   { params }: { params: { storeId: string } }
 ) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const supabase = getSupabase()
     const { data: platforms, error } = await supabase
       .from('store_platforms')

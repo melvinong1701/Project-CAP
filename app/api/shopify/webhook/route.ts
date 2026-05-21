@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
-
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -48,6 +46,10 @@ interface ConversationRow {
   id: string
 }
 
+interface StorePlatformOrgRow {
+  organization_id: string
+}
+
 export async function POST(req: NextRequest) {
   try {
     const rawBody = Buffer.from(await req.arrayBuffer())
@@ -70,9 +72,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'storeId missing' }, { status: 400 })
     }
 
+    const supabase = getSupabase()
+    const { data: platformRow, error: platformError } = await supabase
+      .from('store_platforms')
+      .select('organization_id')
+      .eq('store_id', storeId)
+      .eq('platform_id', 'shopify')
+      .maybeSingle<StorePlatformOrgRow>()
+
+    if (platformError) {
+      console.error('Failed to resolve Shopify webhook org:', platformError)
+      return NextResponse.json({ ok: false }, { status: 500 })
+    }
+
+    if (!platformRow?.organization_id) {
+      console.error('Unknown storeId in Shopify webhook:', storeId)
+      return NextResponse.json({ ok: true })
+    }
+
     if (topic === 'orders/create') {
       const order = JSON.parse(rawBody.toString()) as ShopifyOrder
-      await handleOrderCreate({ order, storeId })
+      await handleOrderCreate({ order, storeId, organizationId: platformRow.organization_id })
     }
 
     return NextResponse.json({ ok: true })
@@ -82,8 +102,8 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function handleOrderCreate(params: { order: ShopifyOrder; storeId: string }) {
-  const { order, storeId } = params
+async function handleOrderCreate(params: { order: ShopifyOrder; storeId: string; organizationId: string }) {
+  const { order, storeId, organizationId } = params
   const supabase = getSupabase()
 
   const customerName = [order.customer?.first_name, order.customer?.last_name].filter(Boolean).join(' ')
@@ -96,7 +116,7 @@ async function handleOrderCreate(params: { order: ShopifyOrder; storeId: string 
     .from('conversations')
     .upsert(
       {
-        organization_id: ORG_ID,
+        organization_id: organizationId,
         store_id: storeId,
         channel: 'shopify',
         external_id: String(order.id),
@@ -121,7 +141,7 @@ async function handleOrderCreate(params: { order: ShopifyOrder; storeId: string 
     .upsert(
       {
         conversation_id: conv.id,
-        organization_id: ORG_ID,
+        organization_id: organizationId,
         external_id: String(order.id),
         sender: 'customer',
         content: summary,

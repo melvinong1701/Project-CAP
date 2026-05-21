@@ -19,8 +19,6 @@ function getSupabase() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
-
 interface TelegramMessage {
   message_id: number
   from?: {
@@ -57,6 +55,10 @@ interface MessageRow {
   timestamp: string
 }
 
+interface StoreOrgRow {
+  organization_id: string
+}
+
 function isKnownSender(sender: string): sender is ConversationContextMessage['sender'] {
   return sender === 'agent' || sender === 'ai' || sender === 'customer'
 }
@@ -77,6 +79,7 @@ function toContextMessages(messages: MessageRow[] | null): ConversationContextMe
 
 async function linkTelegramCustomer(params: {
   supabase: ReturnType<typeof getSupabase>
+  organizationId: string
   conversationId: string
   customerId: string | null
   chatId: string
@@ -90,7 +93,7 @@ async function linkTelegramCustomer(params: {
     .from('customers')
     .upsert(
       {
-        organization_id: ORG_ID,
+        organization_id: params.organizationId,
         display_name: params.senderName,
         telegram_id: params.chatId,
       },
@@ -108,7 +111,7 @@ async function linkTelegramCustomer(params: {
     .from('conversations')
     .update({ customer_id: customer.id })
     .eq('id', params.conversationId)
-    .eq('organization_id', ORG_ID)
+    .eq('organization_id', params.organizationId)
 
   if (linkErr) {
     console.error('Failed to link Telegram customer:', linkErr)
@@ -117,6 +120,7 @@ async function linkTelegramCustomer(params: {
 
 async function triggerAiSuggestion(params: {
   supabase: ReturnType<typeof getSupabase>
+  organizationId: string
   conversationId: string
   storeId: string | null
   latestMessage: string
@@ -130,7 +134,7 @@ async function triggerAiSuggestion(params: {
         .from('store_ai_config')
         .select('store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions, custom_guardrails')
         .eq('store_id', params.storeId)
-        .eq('organization_id', ORG_ID)
+        .eq('organization_id', params.organizationId)
         .maybeSingle()
 
       if (configErr) {
@@ -144,7 +148,7 @@ async function triggerAiSuggestion(params: {
       .from('messages')
       .select('sender, content, timestamp')
       .eq('conversation_id', params.conversationId)
-      .eq('organization_id', ORG_ID)
+      .eq('organization_id', params.organizationId)
       .order('timestamp', { ascending: false })
       .limit(10)
 
@@ -153,7 +157,7 @@ async function triggerAiSuggestion(params: {
     }
 
     const suggestInput: SuggestReplyInput = {
-      organizationId: ORG_ID,
+      organizationId: params.organizationId,
       channel: 'telegram',
       customerName: params.senderName,
       latestMessage: params.latestMessage,
@@ -178,7 +182,7 @@ async function triggerAiSuggestion(params: {
         },
       })
       .eq('id', params.conversationId)
-      .eq('organization_id', ORG_ID)
+      .eq('organization_id', params.organizationId)
 
     if (updateErr) {
       console.error('Failed to write AI suggestion:', updateErr)
@@ -195,7 +199,7 @@ async function triggerAiSuggestion(params: {
         },
       })
       .eq('id', params.conversationId)
-      .eq('organization_id', ORG_ID)
+      .eq('organization_id', params.organizationId)
 
     if (updateErr) {
       console.error('Failed to write AI pipeline error:', updateErr)
@@ -224,6 +228,24 @@ export async function POST(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const storeId: string | null = searchParams.get('storeId')
 
+    if (!storeId) {
+      console.error('Missing storeId in Telegram webhook')
+      return NextResponse.json({ ok: false }, { status: 400 })
+    }
+
+    const { data: storeRow, error: storeError } = await supabase
+      .from('stores')
+      .select('organization_id')
+      .eq('id', storeId)
+      .single<StoreOrgRow>()
+
+    if (storeError || !storeRow?.organization_id) {
+      console.error('Unknown storeId in Telegram webhook:', storeId, storeError)
+      return NextResponse.json({ ok: false }, { status: 400 })
+    }
+
+    const ORG_ID = storeRow.organization_id
+
     // Upsert conversation (unique on store_id + channel + external_id)
     const { data: conv, error: convErr } = await supabase
       .from('conversations')
@@ -251,6 +273,7 @@ export async function POST(req: NextRequest) {
 
     await linkTelegramCustomer({
       supabase,
+      organizationId: ORG_ID,
       conversationId: conv.id,
       customerId: conv.customer_id,
       chatId,
@@ -278,6 +301,7 @@ export async function POST(req: NextRequest) {
     } else {
       await triggerAiSuggestion({
         supabase,
+        organizationId: ORG_ID,
         conversationId: conv.id,
         storeId,
         latestMessage: text,

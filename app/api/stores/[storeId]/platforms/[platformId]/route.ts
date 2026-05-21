@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
+import { requireAuth } from '@/lib/getOrgId'
 
 interface StorePlatformDisconnectRow {
   id: string
@@ -25,6 +24,10 @@ export async function DELETE(
   { params }: { params: { storeId: string; platformId: string } }
 ) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const { storeId, platformId } = params
     const supabase = getSupabase()
 

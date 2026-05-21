@@ -4,8 +4,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Channel, Store } from '@/lib/types'
 
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
-
 interface StoreRow {
   id: string
   name: string
@@ -30,21 +28,55 @@ function isChannel(value: string): value is Channel {
   ].includes(value)
 }
 
-export function useStores(): {
+export function useStores(organizationId?: string | null): {
   stores: Store[]
   storeNames: Record<string, string>
   rawStores: { id: string; name: string }[]
   fetchStores: () => Promise<void>
 } {
+  const [profileOrganizationId, setProfileOrganizationId] = useState<string | null>(organizationId ?? null)
   const [stores, setStores] = useState<Store[]>([])
   const [storeNames, setStoreNames] = useState<Record<string, string>>({})
   const [rawStores, setRawStores] = useState<{ id: string; name: string }[]>([])
+  const activeOrganizationId = organizationId === undefined ? profileOrganizationId : organizationId
+
+  useEffect(() => {
+    if (organizationId !== undefined) {
+      setProfileOrganizationId(organizationId)
+      return
+    }
+
+    let cancelled = false
+
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single<{ organization_id: string }>()
+
+      if (!cancelled) setProfileOrganizationId(profile?.organization_id ?? null)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [organizationId])
 
   const fetchStores = useCallback(async () => {
+    if (!activeOrganizationId) {
+      setStores([])
+      setStoreNames({})
+      setRawStores([])
+      return
+    }
+
     const { data: storeRows } = await supabase
       .from('stores')
       .select('id, name')
-      .eq('organization_id', ORG_ID)
+      .eq('organization_id', activeOrganizationId)
       .returns<StoreRow[]>()
 
     const storeIds = (storeRows ?? []).map(store => store.id)
@@ -52,7 +84,7 @@ export function useStores(): {
       ? await supabase
           .from('store_platforms')
           .select('store_id, platform_id, account_label')
-          .eq('organization_id', ORG_ID)
+          .eq('organization_id', activeOrganizationId)
           .in('store_id', storeIds)
           .returns<StorePlatformRow[]>()
       : { data: [] as StorePlatformRow[] }
@@ -81,7 +113,7 @@ export function useStores(): {
     }))
 
     setStores(sidebarStores)
-  }, [])
+  }, [activeOrganizationId])
 
   useEffect(() => {
     fetchStores()

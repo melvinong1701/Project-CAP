@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
 const PAGE_SIZE = 50
 
 export const dynamic = 'force-dynamic'
@@ -51,6 +50,12 @@ interface ProductsPage {
   }
 }
 
+interface ShopifyPlatformRow {
+  organization_id: string
+  access_token: string
+  shopify_domain: string
+}
+
 const PRODUCTS_QUERY = `
   query GetProducts($first: Int!, $after: String) {
     products(first: $first, after: $after) {
@@ -88,15 +93,16 @@ export async function POST(req: NextRequest) {
 
     const { data: platform, error: platErr } = await supabase
       .from('store_platforms')
-      .select('access_token, shopify_domain')
+      .select('organization_id, access_token, shopify_domain')
       .eq('store_id', storeId)
-      .eq('organization_id', ORG_ID)
       .eq('platform_id', 'shopify')
-      .single<{ access_token: string; shopify_domain: string }>()
+      .single<ShopifyPlatformRow>()
 
     if (platErr || !platform) {
       return NextResponse.json({ error: 'Shopify connection not found' }, { status: 404 })
     }
+
+    const ORG_ID = platform.organization_id
 
     let cursor: string | null = null
     let totalSynced = 0

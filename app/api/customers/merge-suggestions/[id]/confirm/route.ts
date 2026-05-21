@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ORG_ID, getSupabaseAdmin, isUuid, type MergeSuggestionRow } from '../../../_utils'
+import { getSupabaseAdmin, isUuid, type MergeSuggestionRow } from '../../../_utils'
+import { requireAuth } from '@/lib/getOrgId'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,6 +10,10 @@ interface RouteContext {
 
 export async function POST(req: NextRequest, { params }: RouteContext) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     if (!isUuid(params.id)) {
       return NextResponse.json({ error: 'Merge suggestion not found' }, { status: 404 })
     }

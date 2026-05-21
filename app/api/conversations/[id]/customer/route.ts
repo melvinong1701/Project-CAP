@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { resolveCustomerIdentity } from '@/lib/identity-resolution'
-
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
+import { requireAuth } from '@/lib/getOrgId'
 
 interface RouteContext {
   params: { id: string }
@@ -61,6 +60,10 @@ function mapCustomer(row: CustomerRow) {
 
 export async function PATCH(req: NextRequest, { params }: RouteContext) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const conversationId = params.id
     const body = await req.json() as Record<string, unknown>
     const supabase = getSupabase()
@@ -102,7 +105,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
         return NextResponse.json({ error: 'Failed to save contact' }, { status: 500 })
       }
 
-      const resolvedCustomer = await resolveCustomerForResponse(supabase, customer.id, conversation)
+      const resolvedCustomer = await resolveCustomerForResponse(supabase, ORG_ID, customer.id, conversation)
 
       return NextResponse.json({ customer: mapCustomer(resolvedCustomer) })
     }
@@ -129,7 +132,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ error: 'Failed to link contact' }, { status: 500 })
     }
 
-    const resolvedCustomer = await resolveCustomerForResponse(supabase, customer.id, conversation)
+    const resolvedCustomer = await resolveCustomerForResponse(supabase, ORG_ID, customer.id, conversation)
 
     return NextResponse.json({ customer: mapCustomer(resolvedCustomer) })
   } catch (err) {
@@ -140,12 +143,13 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 
 async function resolveCustomerForResponse(
   supabase: ReturnType<typeof getSupabase>,
+  organizationId: string,
   customerId: string,
   conversation: ConversationRow
 ): Promise<CustomerRow> {
   const resolution = await resolveCustomerIdentity({
     supabase,
-    organizationId: ORG_ID,
+    organizationId,
     customerId,
     conversationId: conversation.id,
     storeId: conversation.store_id,
@@ -157,7 +161,7 @@ async function resolveCustomerForResponse(
     .from('customers')
     .select('id, organization_id, display_name, email, phone, notes, telegram_id, shopee_buyer_id, lazada_buyer_id, tiktok_buyer_id')
     .eq('id', resolvedCustomerId)
-    .eq('organization_id', ORG_ID)
+    .eq('organization_id', organizationId)
     .single<CustomerRow>()
 
   if (error || !customer) {

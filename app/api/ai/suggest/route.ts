@@ -11,8 +11,8 @@ import {
   type SuggestReplyInput,
 } from '@/lib/aiRouter'
 import type { Channel } from '@/lib/types'
+import { requireAuth } from '@/lib/getOrgId'
 
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
 const CATALOG_INTENTS = new Set<AiIntent>(['product_question', 'pricing', 'availability'])
 
 export const dynamic = 'force-dynamic'
@@ -148,6 +148,10 @@ function extractCurrentBlock(messages: ConversationContextMessage[]): Conversati
 
 export async function POST(req: NextRequest) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const body = await req.json() as SuggestRequestBody
     if (!body.conversationId && !body.latestMessage?.trim()) {
       return jsonAiError('no_messages')

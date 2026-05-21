@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import type { ConversationStatus } from '@/lib/types'
+import { requireAuth } from '@/lib/getOrgId'
 
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
 const STATUSES: ConversationStatus[] = ['open', 'pending', 'closed']
 
 interface RouteContext {
@@ -24,6 +24,10 @@ function isConversationStatus(value: unknown): value is ConversationStatus {
 
 export async function PATCH(req: NextRequest, { params }: RouteContext) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const body = await req.json() as { status?: unknown }
     if (!isConversationStatus(body.status)) {
       return NextResponse.json({ error: 'invalid status' }, { status: 400 })

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveCustomerIdentity } from '@/lib/identity-resolution'
 import {
-  ORG_ID,
   cleanTags,
   cleanText,
   customerSelect,
@@ -12,6 +11,7 @@ import {
   type MergeRow,
   type MergeSuggestionRow,
 } from '../_utils'
+import { requireAuth } from '@/lib/getOrgId'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,6 +62,10 @@ function profileSummary(row: Pick<CustomerRow, 'id' | 'display_name' | 'email' |
 
 export async function GET(_req: NextRequest, { params }: RouteContext) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     if (!isUuid(params.id)) {
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
     }
@@ -230,6 +234,10 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 
 export async function PUT(req: NextRequest, { params }: RouteContext) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     if (!isUuid(params.id)) {
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
     }

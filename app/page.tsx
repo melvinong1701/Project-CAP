@@ -8,8 +8,6 @@ import { useStores } from '@/lib/useStores'
 import { AiConfidence, Conversation, ConversationStatus, CustomerContact, Message, isAiError } from '@/lib/types'
 import { X, Loader2, Check, AlertCircle } from 'lucide-react'
 
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
-
 // ─── Supabase row shapes ────────────────────────────────────────────────────
 
 interface ConvRow {
@@ -126,6 +124,7 @@ function mapMsg(row: MsgRow): Message {
 // ─── Telegram Quick-Connect Modal ────────────────────────────────────────────
 
 interface TelegramSetupModalProps {
+  organizationId: string
   existingStores: { id: string; name: string }[]
   onClose: () => void
   onDone: () => void | Promise<void>
@@ -133,7 +132,7 @@ interface TelegramSetupModalProps {
 
 type SetupStep = 'store' | 'token' | 'connecting' | 'done' | 'error'
 
-function TelegramSetupModal({ existingStores, onClose, onDone }: TelegramSetupModalProps) {
+function TelegramSetupModal({ organizationId, existingStores, onClose, onDone }: TelegramSetupModalProps) {
   const [step, setStep] = useState<SetupStep>(existingStores.length > 0 ? 'token' : 'store')
   const [storeName, setStoreName] = useState('')
   const [selectedStoreId, setSelectedStoreId] = useState(existingStores[0]?.id ?? '')
@@ -153,7 +152,7 @@ function TelegramSetupModal({ existingStores, onClose, onDone }: TelegramSetupMo
       const name = storeName.trim() || 'My Store'
       const { data, error } = await supabase
         .from('stores')
-        .insert({ name, organization_id: ORG_ID, country: 'SG', language: 'en', currency: 'SGD' })
+        .insert({ name, organization_id: organizationId, country: 'SG', language: 'en', currency: 'SGD' })
         .select('id')
         .single()
       if (error || !data) {
@@ -338,8 +337,9 @@ export default function Home() {
     if (typeof window === 'undefined') return null
     return new URLSearchParams(window.location.search).get('conversationId')
   })
+  const [organizationId, setOrganizationId] = useState<string | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const { stores, storeNames, rawStores, fetchStores } = useStores()
+  const { stores, storeNames, rawStores, fetchStores } = useStores(organizationId)
   const [activeConvId, setActiveConvId] = useState<string | null>(null)
   const activeConvIdRef = useRef<string | null>(null)
   activeConvIdRef.current = activeConvId
@@ -349,12 +349,40 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [showTelegramSetup, setShowTelegramSetup] = useState(false)
 
+  useEffect(() => {
+    let cancelled = false
+
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) {
+        if (!cancelled) setLoading(false)
+        return
+      }
+
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single<{ organization_id: string }>()
+
+      if (!cancelled) {
+        if (profile?.organization_id) setOrganizationId(profile.organization_id)
+        else setLoading(false)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // ── Fetch all conversations + their messages ──────────────────────────────
   const fetchConversations = useCallback(async () => {
+    if (!organizationId) return
+
     const { data: convRows, error } = await supabase
       .from('conversations')
       .select('*')
-      .eq('organization_id', ORG_ID)
+      .eq('organization_id', organizationId)
       .order('last_message_at', { ascending: false })
 
     if (error || !convRows) return
@@ -365,7 +393,7 @@ export default function Home() {
       ? await supabase
           .from('messages')
           .select('*')
-          .eq('organization_id', ORG_ID)
+          .eq('organization_id', organizationId)
           .in('conversation_id', convIds)
           .order('timestamp', { ascending: true })
       : { data: [] as MsgRow[] }
@@ -384,7 +412,7 @@ export default function Home() {
       ? await supabase
           .from('customers')
           .select('id, organization_id, display_name, email, phone, notes, telegram_id, shopee_buyer_id, lazada_buyer_id, tiktok_buyer_id')
-          .eq('organization_id', ORG_ID)
+          .eq('organization_id', organizationId)
           .in('id', customerIds)
       : { data: [] as CustomerRow[] }
 
@@ -407,7 +435,7 @@ export default function Home() {
       setActiveConvId(mapped[0].id)
     }
     setLoading(false)
-  }, [storeNames, requestedConversationId])
+  }, [organizationId, storeNames, requestedConversationId])
 
   // ── Load conversations once storeNames are ready ──────────────────────────
   useEffect(() => {
@@ -416,11 +444,13 @@ export default function Home() {
 
   // ── Supabase Realtime — new messages ──────────────────────────────────────
   useEffect(() => {
+    if (!organizationId) return
+
     const channel = supabase
       .channel('realtime:messages')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages', filter: `organization_id=eq.${ORG_ID}` },
+        { event: 'INSERT', schema: 'public', table: 'messages', filter: `organization_id=eq.${organizationId}` },
         (payload) => {
           const newMsg = mapMsg(payload.new as MsgRow)
           setConversations(prev =>
@@ -484,7 +514,7 @@ export default function Home() {
                     .from('conversations')
                     .update({ ai_suggestion: { error: errorCode, dismissed: false } })
                     .eq('id', convId)
-                    .eq('organization_id', ORG_ID)
+                    .eq('organization_id', organizationId)
                     .then(() => {})
                 }
               })
@@ -499,7 +529,7 @@ export default function Home() {
                   .from('conversations')
                   .update({ ai_suggestion: { error: errorCode, dismissed: false } })
                   .eq('id', convId)
-                  .eq('organization_id', ORG_ID)
+                  .eq('organization_id', organizationId)
                   .then(() => {})
               })
           }
@@ -507,7 +537,7 @@ export default function Home() {
       )
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'conversations', filter: `organization_id=eq.${ORG_ID}` },
+        { event: 'INSERT', schema: 'public', table: 'conversations', filter: `organization_id=eq.${organizationId}` },
         () => {
           // New conversation arrived — re-fetch to get full data
           fetchConversations()
@@ -515,7 +545,7 @@ export default function Home() {
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'conversations', filter: `organization_id=eq.${ORG_ID}` },
+        { event: 'UPDATE', schema: 'public', table: 'conversations', filter: `organization_id=eq.${organizationId}` },
         (payload) => {
           const updated = payload.new as ConvRow
           setConversations(prev =>
@@ -538,7 +568,7 @@ export default function Home() {
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [fetchConversations])
+  }, [fetchConversations, organizationId])
 
   // ── Unread counts for sidebar ─────────────────────────────────────────────
   const storesWithCounts = stores.map(store => {
@@ -571,17 +601,23 @@ export default function Home() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleSelect = async (id: string) => {
+    if (!organizationId) return
+
     setActiveConvId(id)
     setConversations(prev => prev.map(c => c.id === id ? { ...c, isRead: true } : c))
-    await supabase.from('conversations').update({ is_read: true }).eq('id', id).eq('organization_id', ORG_ID)
+    await supabase.from('conversations').update({ is_read: true }).eq('id', id).eq('organization_id', organizationId)
   }
 
   const handleMarkRead = async (id: string) => {
+    if (!organizationId) return
+
     setConversations(prev => prev.map(c => c.id === id ? { ...c, isRead: true } : c))
-    await supabase.from('conversations').update({ is_read: true }).eq('id', id).eq('organization_id', ORG_ID)
+    await supabase.from('conversations').update({ is_read: true }).eq('id', id).eq('organization_id', organizationId)
   }
 
   const handleSendMessage = async (convId: string, message: Message) => {
+    if (!organizationId) return
+
     // Optimistically update UI
     setConversations(prev =>
       prev.map(c => {
@@ -614,10 +650,12 @@ export default function Home() {
       .from('conversations')
       .update({ ai_suggestion: null })
       .eq('id', convId)
-      .eq('organization_id', ORG_ID)
+      .eq('organization_id', organizationId)
   }
 
   const handleClearAi = async (convId: string) => {
+    if (!organizationId) return
+
     setConversations(prev =>
       prev.map(c => c.id === convId ? { ...c, aiSuggestion: undefined } : c)
     )
@@ -625,10 +663,12 @@ export default function Home() {
       .from('conversations')
       .update({ ai_suggestion: null })
       .eq('id', convId)
-      .eq('organization_id', ORG_ID)
+      .eq('organization_id', organizationId)
   }
 
   const handleDismissAi = async (convId: string) => {
+    if (!organizationId) return
+
     setConversations(prev =>
       prev.map(c =>
         c.id === convId && c.aiSuggestion && !isAiError(c.aiSuggestion)
@@ -651,10 +691,12 @@ export default function Home() {
         },
       })
       .eq('id', convId)
-      .eq('organization_id', ORG_ID)
+      .eq('organization_id', organizationId)
   }
 
   const handleShowAi = async (convId: string) => {
+    if (!organizationId) return
+
     setConversations(prev =>
       prev.map(c =>
         c.id === convId && c.aiSuggestion && !isAiError(c.aiSuggestion)
@@ -677,7 +719,7 @@ export default function Home() {
         },
       })
       .eq('id', convId)
-      .eq('organization_id', ORG_ID)
+      .eq('organization_id', organizationId)
   }
 
   const handleRetryAi = (convId: string) => {
@@ -759,12 +801,22 @@ export default function Home() {
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
+  if (!organizationId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center gap-2 bg-white text-sm text-gray-400">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Loading workspace...
+      </div>
+    )
+  }
+
   return (
     <div className="flex overflow-hidden bg-white" style={{ height: '100dvh' }}>
 
       {/* Telegram quick-connect modal */}
       {showTelegramSetup && (
         <TelegramSetupModal
+          organizationId={organizationId}
           existingStores={rawStores}
           onClose={() => setShowTelegramSetup(false)}
           onDone={async () => {
