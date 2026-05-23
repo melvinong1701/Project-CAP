@@ -290,13 +290,8 @@ interface TeamMember {
   role: Role
   status: 'active' | 'invited'
   avatar: string
+  isCurrentUser?: boolean
 }
-
-const initialTeam: TeamMember[] = [
-  { id: '1', name: 'Melvin', email: 'melvinong1701@gmail.com', role: 'owner', status: 'active', avatar: 'M' },
-  { id: '2', name: 'Ryan', email: 'ryan@projectcap.app', role: 'admin', status: 'active', avatar: 'R' },
-  { id: '3', name: 'Martin', email: 'martin@projectcap.app', role: 'admin', status: 'active', avatar: 'M' },
-]
 
 const roleConfig: Record<Role, { label: string; color: string; bg: string; icon: React.ElementType }> = {
   owner: { label: 'Owner', color: 'text-amber-700', bg: 'bg-amber-50', icon: Crown },
@@ -315,6 +310,18 @@ const roleDescriptions: Record<Role, string> = {
 function isUserRole(value: unknown): value is Role {
   return value === 'owner' || value === 'admin' || value === 'agent' || value === 'viewer'
 }
+
+interface ApiTeamMember {
+  id: string
+  email: string
+  role: string
+  status?: string
+  displayName: string
+  avatarUrl: string | null
+  isCurrentUser: boolean
+}
+
+type InviteResult = { ok: boolean; error?: string }
 
 const permissions = [
   { label: 'View all conversations', owner: true, admin: true, agent: true, viewer: true },
@@ -594,18 +601,28 @@ function AddStoreForm({ onBack, onSave }: AddStoreFormProps) {
 
 interface InviteModalProps {
   onClose: () => void
-  onInvite: (email: string, role: Role) => void
+  onInvite: (email: string, role: Role) => Promise<InviteResult>
 }
 
 function InviteModal({ onClose, onInvite }: InviteModalProps) {
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<Role>('agent')
   const [sent, setSent] = useState(false)
+  const [inviting, setInviting] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
 
-  const handleSubmit = () => {
-    if (!email.includes('@')) return
-    onInvite(email, role)
-    setSent(true)
+  const handleSubmit = async () => {
+    if (!email.includes('@') || inviting) return
+    setInviting(true)
+    setInviteError(null)
+    const result = await onInvite(email, role)
+    setInviting(false)
+
+    if (result.ok) {
+      setSent(true)
+    } else {
+      setInviteError(result.error ?? 'Something went wrong.')
+    }
   }
 
   return (
@@ -664,13 +681,19 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
                 </div>
               </div>
             </div>
+            {inviteError && (
+              <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 rounded-lg p-3">
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <p>{inviteError}</p>
+              </div>
+            )}
             <button
               onClick={handleSubmit}
-              disabled={!email.includes('@')}
+              disabled={!email.includes('@') || inviting}
               className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
             >
-              <Mail className="w-4 h-4" />
-              Send invite
+              {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+              {inviting ? 'Sending...' : 'Send invite'}
             </button>
           </>
         ) : (
@@ -768,6 +791,10 @@ export default function SettingsPage() {
   // Stores state — fetched from Supabase
   const [stores, setStores] = useState<StoreRecord[]>([])
   const [storesLoading, setStoresLoading] = useState(true)
+  const [team, setTeam] = useState<TeamMember[]>([])
+  const [teamLoading, setTeamLoading] = useState(true)
+  const [showInvite, setShowInvite] = useState(false)
+  const [showPermissions, setShowPermissions] = useState(false)
 
   useEffect(() => {
     async function fetchStores() {
@@ -801,6 +828,44 @@ export default function SettingsPage() {
     }
     fetchStores()
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchMembers() {
+      setTeamLoading(true)
+      try {
+        const res = await fetch('/api/org/members')
+        if (!res.ok) return
+
+        const { data } = await res.json() as { data: { members: ApiTeamMember[] } | null }
+        if (cancelled || !data) return
+
+        setTeam(data.members.map(member => {
+          const name = member.displayName || member.email.split('@')[0] || 'User'
+          const status: TeamMember['status'] = member.status === 'invited' ? 'invited' : 'active'
+          return {
+            id: member.id,
+            name,
+            email: member.email,
+            role: isUserRole(member.role) ? member.role : 'agent',
+            status,
+            avatar: name.charAt(0).toUpperCase(),
+            isCurrentUser: member.isCurrentUser,
+          }
+        }))
+      } catch {
+      } finally {
+        if (!cancelled) setTeamLoading(false)
+      }
+    }
+
+    fetchMembers()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const [storesView, setStoresView] = useState<'list' | 'add' | 'platforms'>('list')
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
   const [storeTab, setStoreTab] = useState<'platforms' | 'ai'>('platforms')
@@ -898,11 +963,6 @@ export default function SettingsPage() {
     setStoresView('platforms')
   }
 
-  // Team state
-  const [team, setTeam] = useState<TeamMember[]>(initialTeam)
-  const [showInvite, setShowInvite] = useState(false)
-  const [showPermissions, setShowPermissions] = useState(false)
-
   useEffect(() => {
     if (!storeAiSaved) return undefined
 
@@ -910,16 +970,36 @@ export default function SettingsPage() {
     return () => window.clearTimeout(timeoutId)
   }, [storeAiSaved])
 
-  const handleInvite = (email: string, role: Role) => {
-    const name = email.split('@')[0]
-    setTeam(prev => [...prev, {
-      id: String(Date.now()),
-      name: name.charAt(0).toUpperCase() + name.slice(1),
-      email,
-      role,
-      status: 'invited',
-      avatar: name.charAt(0).toUpperCase(),
-    }])
+  const handleInvite = async (email: string, role: Role): Promise<InviteResult> => {
+    const normalizedEmail = email.trim().toLowerCase()
+
+    try {
+      const res = await fetch('/api/org/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail, role }),
+      })
+      const json = await res.json() as { data: { ok: boolean } | null; error: string | null }
+
+      if (!res.ok || json.error) {
+        return { ok: false, error: json.error ?? 'Failed to send invite' }
+      }
+
+      const name = normalizedEmail.split('@')[0] || 'User'
+      const displayName = name.charAt(0).toUpperCase() + name.slice(1)
+      setTeam(prev => [...prev, {
+        id: `pending-${Date.now()}`,
+        name: displayName,
+        email: normalizedEmail,
+        role,
+        status: 'invited',
+        avatar: displayName.charAt(0).toUpperCase(),
+        isCurrentUser: false,
+      }])
+      return { ok: true }
+    } catch {
+      return { ok: false, error: 'Network error. Please try again.' }
+    }
   }
 
   const handleRoleChange = (memberId: string, role: Role) => {
@@ -1414,48 +1494,54 @@ export default function SettingsPage() {
                   <p className="text-xs text-gray-400 w-20 text-right hidden sm:block">Status</p>
                   <span className="w-8" />
                 </div>
-                <div className="divide-y divide-gray-50">
-                  {team.map(member => (
-                    <div key={member.id} className="flex items-center gap-4 px-5 py-3.5">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-indigo-700 font-semibold text-sm flex-shrink-0">
-                        {member.avatar}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {member.name}
-                          {member.email === 'melvinong1701@gmail.com' && (
-                            <span className="ml-1.5 text-xs text-gray-400 font-normal">(you)</span>
+                {teamLoading ? (
+                  <div className="flex items-center justify-center h-32">
+                    <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-50">
+                    {team.map(member => (
+                      <div key={member.id} className="flex items-center gap-4 px-5 py-3.5">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-indigo-700 font-semibold text-sm flex-shrink-0">
+                          {member.avatar}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {member.name}
+                            {member.isCurrentUser && (
+                              <span className="ml-1.5 text-xs text-gray-400 font-normal">(you)</span>
+                            )}
+                          </p>
+                          <p className="text-xs text-gray-400 truncate">{member.email}</p>
+                        </div>
+                        <div className="w-28 flex-shrink-0">
+                          <RoleDropdown
+                            member={member}
+                            onChange={role => handleRoleChange(member.id, role)}
+                          />
+                        </div>
+                        <div className="w-20 flex-shrink-0 text-right hidden sm:block">
+                          {member.status === 'invited' ? (
+                            <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">Invited</span>
+                          ) : (
+                            <span className="text-xs text-gray-400">Active</span>
                           )}
-                        </p>
-                        <p className="text-xs text-gray-400 truncate">{member.email}</p>
+                        </div>
+                        <div className="w-8 flex justify-end">
+                          {member.role !== 'owner' && (
+                            <button
+                              onClick={() => handleRemove(member.id)}
+                              className="text-gray-300 hover:text-red-400 transition-colors"
+                              title="Remove member"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="w-28 flex-shrink-0">
-                        <RoleDropdown
-                          member={member}
-                          onChange={role => handleRoleChange(member.id, role)}
-                        />
-                      </div>
-                      <div className="w-20 flex-shrink-0 text-right hidden sm:block">
-                        {member.status === 'invited' ? (
-                          <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">Invited</span>
-                        ) : (
-                          <span className="text-xs text-gray-400">Active</span>
-                        )}
-                      </div>
-                      <div className="w-8 flex justify-end">
-                        {member.role !== 'owner' && (
-                          <button
-                            onClick={() => handleRemove(member.id)}
-                            className="text-gray-300 hover:text-red-400 transition-colors"
-                            title="Remove member"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Role descriptions */}
