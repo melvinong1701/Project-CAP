@@ -8,6 +8,7 @@ function ResetPasswordPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const exchangeStarted = useRef(false)
+  const submittedRef = useRef(false)
   const [status, setStatus] = useState<'exchanging' | 'ready' | 'error'>('exchanging')
   const [exchangeError, setExchangeError] = useState('')
   const [password, setPassword] = useState('')
@@ -19,35 +20,56 @@ function ResetPasswordPage() {
     if (exchangeStarted.current) return
     exchangeStarted.current = true
 
+    const tokenHash = searchParams.get('token_hash')
+    const type = searchParams.get('type')
     const code = searchParams.get('code')
 
     const prepareSession = async () => {
-      if (!code) {
-        const { data } = await supabase.auth.getSession()
+      await supabase.auth.signOut({ scope: 'local' })
 
-        if (data.session) {
-          setStatus('ready')
+      if (tokenHash && type === 'recovery') {
+        const { error: otpErr } = await supabase.auth.verifyOtp({
+          type: 'recovery',
+          token_hash: tokenHash,
+        })
+
+        if (otpErr) {
+          setExchangeError('This password reset link is invalid or has expired.')
+          setStatus('error')
           return
         }
 
-        setExchangeError('This password reset link is invalid or has expired.')
-        setStatus('error')
+        setStatus('ready')
         return
       }
 
-      const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code)
+      if (code) {
+        const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code)
 
-      if (exchangeErr) {
-        setExchangeError('This password reset link is invalid or has expired.')
-        setStatus('error')
+        if (exchangeErr) {
+          setExchangeError('This password reset link is invalid or has expired.')
+          setStatus('error')
+          return
+        }
+
+        setStatus('ready')
         return
       }
 
-      setStatus('ready')
+      setExchangeError('This password reset link is invalid or has expired.')
+      setStatus('error')
     }
 
     void prepareSession()
   }, [searchParams])
+
+  useEffect(() => {
+    return () => {
+      if (!submittedRef.current) {
+        void supabase.auth.signOut({ scope: 'global' })
+      }
+    }
+  }, [])
 
   const handleReset = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -72,7 +94,8 @@ function ResetPasswordPage() {
       return
     }
 
-    await supabase.auth.signOut()
+    submittedRef.current = true
+    await supabase.auth.signOut({ scope: 'global' })
     router.push('/login')
   }
 
