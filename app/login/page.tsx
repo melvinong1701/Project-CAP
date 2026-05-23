@@ -1,13 +1,15 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 type AuthMode = 'login' | 'signup' | 'forgot'
 
-export default function LoginPage() {
+function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const authErrorCode = searchParams.get('error_code')
   const [mode, setMode] = useState<AuthMode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -133,6 +135,11 @@ export default function LoginPage() {
             {isForgot && 'Enter your email and we will send you a reset link.'}
           </p>
         </div>
+        {authErrorCode === 'otp_expired' && (
+          <p className="text-xs text-red-600 -mt-2">
+            That reset link has expired. Request a new one below.
+          </p>
+        )}
         <form
           onSubmit={isSignup ? handleSignup : isForgot ? handleForgotPassword : handleLogin}
           className="flex flex-col gap-4"
@@ -215,5 +222,13 @@ export default function LoginPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function LoginPageWrapper() {
+  return (
+    <Suspense>
+      <LoginPage />
+    </Suspense>
   )
 }

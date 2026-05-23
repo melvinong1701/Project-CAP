@@ -13,6 +13,17 @@ const PUBLIC_PATHS = [
 ]
 
 export async function middleware(request: NextRequest) {
+  const supabaseError = request.nextUrl.searchParams.get('error')
+  const supabaseErrorCode = request.nextUrl.searchParams.get('error_code')
+  const supabaseErrorDesc = request.nextUrl.searchParams.get('error_description')
+
+  if (supabaseError && supabaseErrorCode && supabaseErrorDesc) {
+    const loginUrl = request.nextUrl.clone()
+    loginUrl.pathname = '/login'
+    loginUrl.search = `?error_code=${encodeURIComponent(supabaseErrorCode)}`
+    return NextResponse.redirect(loginUrl)
+  }
+
   const { pathname } = request.nextUrl
 
   if (PUBLIC_PATHS.some(path => pathname.startsWith(path))) {
