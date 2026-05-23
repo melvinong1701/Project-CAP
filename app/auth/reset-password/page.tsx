@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-export default function ResetPasswordPage() {
+function ResetPasswordPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const exchangeStarted = useRef(false)
   const [status, setStatus] = useState<'exchanging' | 'ready' | 'error'>('exchanging')
   const [exchangeError, setExchangeError] = useState('')
   const [password, setPassword] = useState('')
@@ -14,10 +16,28 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const prepareSession = async () => {
-      const { data, error: sessionError } = await supabase.auth.getSession()
+    if (exchangeStarted.current) return
+    exchangeStarted.current = true
 
-      if (sessionError || !data.session) {
+    const code = searchParams.get('code')
+
+    const prepareSession = async () => {
+      if (!code) {
+        const { data } = await supabase.auth.getSession()
+
+        if (data.session) {
+          setStatus('ready')
+          return
+        }
+
+        setExchangeError('This password reset link is invalid or has expired.')
+        setStatus('error')
+        return
+      }
+
+      const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code)
+
+      if (exchangeErr) {
         setExchangeError('This password reset link is invalid or has expired.')
         setStatus('error')
         return
@@ -27,7 +47,7 @@ export default function ResetPasswordPage() {
     }
 
     void prepareSession()
-  }, [])
+  }, [searchParams])
 
   const handleReset = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -118,5 +138,13 @@ export default function ResetPasswordPage() {
         </form>
       </div>
     </div>
+  )
+}
+
+export default function ResetPasswordPageWrapper() {
+  return (
+    <Suspense>
+      <ResetPasswordPage />
+    </Suspense>
   )
 }
