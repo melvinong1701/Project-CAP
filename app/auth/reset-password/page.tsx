@@ -1,20 +1,66 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
 export default function ResetPasswordPage() {
   const router = useRouter()
+  const exchangeStarted = useRef(false)
+  const [status, setStatus] = useState<'exchanging' | 'ready' | 'error'>('exchanging')
+  const [exchangeError, setExchangeError] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  useEffect(() => {
+    if (exchangeStarted.current) {
+      return
+    }
+
+    exchangeStarted.current = true
+
+    const prepareSession = async () => {
+      const code = new URLSearchParams(window.location.search).get('code')
+
+      if (!code) {
+        const { data, error: sessionError } = await supabase.auth.getSession()
+
+        if (sessionError) {
+          setExchangeError(sessionError.message)
+          setStatus('error')
+          return
+        }
+
+        if (data.session) {
+          setStatus('ready')
+          return
+        }
+
+        setExchangeError('This password reset link is invalid or has expired.')
+        setStatus('error')
+        return
+      }
+
+      const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code)
+
+      if (exchangeErr) {
+        setExchangeError(exchangeErr.message)
+        setStatus('error')
+        return
+      }
+
+      setStatus('ready')
+    }
+
+    void prepareSession()
+  }, [])
 
   const handleReset = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -39,8 +85,31 @@ export default function ResetPasswordPage() {
       return
     }
 
-    router.push('/')
-    router.refresh()
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+
+  if (status === 'exchanging') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+          <p className="text-sm text-gray-400">Verifying reset link…</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+          <p className="text-sm text-red-600">{exchangeError}</p>
+          <a href="/login" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 mt-4 inline-block">
+            Request a new link
+          </a>
+        </div>
+      </div>
+    )
   }
 
   return (
