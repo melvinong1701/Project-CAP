@@ -1,17 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+import { supabase } from '@/lib/supabase'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
-  const exchangeStarted = useRef(false)
   const [status, setStatus] = useState<'exchanging' | 'ready' | 'error'>('exchanging')
   const [exchangeError, setExchangeError] = useState('')
   const [password, setPassword] = useState('')
@@ -20,38 +14,11 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (exchangeStarted.current) {
-      return
-    }
-
-    exchangeStarted.current = true
-
     const prepareSession = async () => {
-      const code = new URLSearchParams(window.location.search).get('code')
+      const { data, error: sessionError } = await supabase.auth.getSession()
 
-      if (!code) {
-        const { data, error: sessionError } = await supabase.auth.getSession()
-
-        if (sessionError) {
-          setExchangeError(sessionError.message)
-          setStatus('error')
-          return
-        }
-
-        if (data.session) {
-          setStatus('ready')
-          return
-        }
-
+      if (sessionError || !data.session) {
         setExchangeError('This password reset link is invalid or has expired.')
-        setStatus('error')
-        return
-      }
-
-      const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code)
-
-      if (exchangeErr) {
-        setExchangeError(exchangeErr.message)
         setStatus('error')
         return
       }
