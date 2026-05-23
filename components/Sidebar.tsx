@@ -152,12 +152,16 @@ export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) 
 
       {/* Footer */}
       <div className="px-3 py-3 border-t border-gray-100 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-2.5">
+        <button
+          type="button"
+          onClick={() => router.push('/account')}
+          className="flex min-w-0 items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-colors hover:bg-gray-50"
+        >
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
             M
           </div>
-          <span className="text-sm text-gray-700 font-medium">Melvin</span>
-        </div>
+          <span className="truncate text-sm text-gray-700 font-medium">Melvin</span>
+        </button>
         <button
           onClick={() => router.push('/settings')}
           className="text-gray-400 hover:text-gray-600 transition-colors"

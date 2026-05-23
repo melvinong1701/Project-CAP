@@ -76,7 +76,15 @@ export async function POST(request: NextRequest) {
 
   const { error: profileError } = await supabase
     .from('user_profiles')
-    .insert({ id: userId, organization_id: org.id, role: 'admin', email })
+    .insert({
+      id: userId,
+      organization_id: org.id,
+      role: 'owner',
+      email,
+      full_name: email.split('@')[0],
+      display_name: email.split('@')[0],
+      email_verified: true,
+    })
 
   if (profileError) {
     await supabase.from('organizations').delete().eq('id', org.id)
