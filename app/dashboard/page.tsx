@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   BarChart3, ArrowUpRight, ArrowDownRight,
   MessageSquare, Bot, Users, Sparkles,
@@ -13,6 +13,22 @@ import { useStores } from '@/lib/useStores'
 
 type Range = '24h' | '7d' | '30d'
 type DashData = ReturnType<typeof getDashboardData>
+type KpiViewModel = DashData['kpis'][number] & { deltaUnavailable?: boolean }
+
+interface DashboardStats {
+  conversations: {
+    count: number
+    deltaPct: number
+  }
+  aiPerformance: {
+    autoSent: number
+    drafted: number
+    escalated: number
+    aiHandleRate: number
+    avgConfidence: number
+  }
+  avgResponseMin: number | null
+}
 
 const storeSettingsHref = '/settings'
 const emptyKpiMessages: Record<string, string> = {
@@ -20,21 +36,107 @@ const emptyKpiMessages: Record<string, string> = {
   orders: 'Order tracking starts when you connect a marketplace store.',
 }
 
+function formatPercent(value: number) {
+  return `${Math.round(value * 100)}%`
+}
+
+function formatShare(value: number, total: number) {
+  return total === 0 ? '0%' : `${Math.round((value / total) * 100)}%`
+}
+
+function formatResponseMinutes(value: number | null) {
+  if (value === null) return '—'
+  return value < 10 ? `${value.toFixed(1)}m` : `${Math.round(value)}m`
+}
+
 export default function DashboardPage() {
   const [range, setRange] = useState<Range>('7d')
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [statsLoading, setStatsLoading] = useState(true)
   const { stores } = useStores()
 
   const data = useMemo(() => getDashboardData(range), [range])
   const {
-    kpis, channelSplit, aiBreakdown, topTopics, agentRows, customerSignals,
+    kpis, channelSplit, topTopics, agentRows, customerSignals,
   } = data
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    setStatsLoading(true)
+    fetch(`/api/dashboard/stats?range=${range}`, { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) {
+          throw new Error(`Dashboard stats request failed with ${response.status}`)
+        }
+        return response.json() as Promise<DashboardStats>
+      })
+      .then(setStats)
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        console.error('Dashboard stats fetch error:', err)
+        setStats(null)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setStatsLoading(false)
+        }
+      })
+
+    return () => controller.abort()
+  }, [range])
+
+  const liveKpis = useMemo<KpiViewModel[]>(() => {
+    const hasStats = !statsLoading && stats !== null
+
+    return kpis.map(kpi => {
+      if (kpi.id === 'conversations') {
+        return {
+          ...kpi,
+          value: hasStats ? stats.conversations.count.toLocaleString() : '—',
+          deltaPct: hasStats ? stats.conversations.deltaPct : 0,
+          deltaUnavailable: !hasStats,
+        }
+      }
+
+      if (kpi.id === 'ai_handled') {
+        return {
+          ...kpi,
+          value: hasStats ? formatPercent(stats.aiPerformance.aiHandleRate) : '—',
+          deltaPct: 0,
+          deltaUnavailable: true,
+        }
+      }
+
+      if (kpi.id === 'response') {
+        return {
+          ...kpi,
+          value: hasStats ? formatResponseMinutes(stats.avgResponseMin) : '—',
+          deltaPct: 0,
+          deltaUnavailable: true,
+        }
+      }
+
+      return kpi
+    })
+  }, [kpis, stats, statsLoading])
+
+  const liveAiBreakdown = !statsLoading && stats
+    ? {
+        autoSent: stats.aiPerformance.autoSent,
+        drafted: stats.aiPerformance.drafted,
+        escalated: stats.aiPerformance.escalated,
+        avgConfidence: stats.aiPerformance.avgConfidence,
+      }
+    : { autoSent: 0, drafted: 0, escalated: 0, avgConfidence: 0 }
 
   const totalChannelRevenue = useMemo(
     () => channelSplit.reduce((s, c) => s + c.revenue, 0),
     [channelSplit]
   )
 
-  const totalAiReplies = aiBreakdown.autoSent + aiBreakdown.drafted + aiBreakdown.escalated
+  const totalAiReplies = liveAiBreakdown.autoSent + liveAiBreakdown.drafted + liveAiBreakdown.escalated
+  const totalAiRepliesLabel = statsLoading ? '—' : totalAiReplies.toLocaleString()
 
   return (
     <div className="flex bg-gray-50" style={{ height: '100dvh' }}>
@@ -60,7 +162,7 @@ export default function DashboardPage() {
 
           {/* ─── KPI grid ─────────────────────────────────────────────── */}
           <section className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-            {kpis.map(k => {
+            {liveKpis.map(k => {
               if (k.id === 'csat') return null
 
               const emptyMessage = emptyKpiMessages[k.id]
@@ -108,27 +210,27 @@ export default function DashboardPage() {
             <Card className="lg:col-span-2">
               <CardHeader
                 title="AI performance"
-                subtitle={`${totalAiReplies.toLocaleString()} AI-assisted replies ${range === '24h' ? 'today' : range === '7d' ? 'this week' : 'this month'}`}
+                subtitle={`${totalAiRepliesLabel} AI-assisted replies ${range === '24h' ? 'today' : range === '7d' ? 'this week' : 'this month'}`}
                 icon={<Sparkles className="w-4 h-4 text-indigo-600" />}
               />
-              <AiBreakdownBar data={aiBreakdown} />
+              <AiBreakdownBar data={liveAiBreakdown} />
               <div className="grid grid-cols-3 gap-4 pt-5 mt-5 border-t border-gray-100">
                 <Stat
                   label="Auto-sent"
-                  value={`${aiBreakdown.autoSent}`}
-                  sub={`${Math.round((aiBreakdown.autoSent / totalAiReplies) * 100)}% · High confidence`}
+                  value={`${liveAiBreakdown.autoSent}`}
+                  sub={`${formatShare(liveAiBreakdown.autoSent, totalAiReplies)} · High confidence`}
                   accent="emerald"
                 />
                 <Stat
                   label="Drafted for review"
-                  value={`${aiBreakdown.drafted}`}
-                  sub={`${Math.round((aiBreakdown.drafted / totalAiReplies) * 100)}% · Medium confidence`}
+                  value={`${liveAiBreakdown.drafted}`}
+                  sub={`${formatShare(liveAiBreakdown.drafted, totalAiReplies)} · Medium confidence`}
                   accent="amber"
                 />
                 <Stat
                   label="Escalated"
-                  value={`${aiBreakdown.escalated}`}
-                  sub={`${Math.round((aiBreakdown.escalated / totalAiReplies) * 100)}% · Low confidence`}
+                  value={`${liveAiBreakdown.escalated}`}
+                  sub={`${formatShare(liveAiBreakdown.escalated, totalAiReplies)} · Low confidence`}
                   accent="rose"
                 />
               </div>
@@ -286,24 +388,35 @@ function Stat({
    KPI card with sparkline
    ──────────────────────────────────────────────────────────────────────── */
 
-function KpiCard({ kpi }: { kpi: DashData['kpis'][number] }) {
+function KpiCard({ kpi }: { kpi: KpiViewModel }) {
   // For response time, negative delta is good (faster).
   const isResponseTime = kpi.id === 'response'
-  const positive = isResponseTime ? kpi.deltaPct < 0 : kpi.deltaPct > 0
+  const neutral = kpi.deltaPct === 0
+  const positive = neutral ? true : isResponseTime ? kpi.deltaPct < 0 : kpi.deltaPct > 0
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_1px_2px_rgba(0,0,0,0.03)] p-4 flex flex-col gap-2">
       <p className="text-xs text-gray-500">{kpi.label}</p>
       <div className="flex items-end justify-between">
         <p className="text-[22px] font-semibold text-gray-900 tracking-tight leading-none">{kpi.value}</p>
-        <span
-          className={cn(
-            'inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-md',
-            positive ? 'text-emerald-700 bg-emerald-50' : 'text-rose-700 bg-rose-50'
-          )}
-        >
-          {positive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-          {Math.abs(kpi.deltaPct).toFixed(1)}%
-        </span>
+        {kpi.deltaUnavailable ? (
+          <span className="inline-flex items-center text-xs font-medium px-1.5 py-0.5 rounded-md text-gray-400 bg-gray-50">
+            —
+          </span>
+        ) : (
+          <span
+            className={cn(
+              'inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-md',
+              neutral
+                ? 'text-gray-600 bg-gray-50'
+                : positive
+                  ? 'text-emerald-700 bg-emerald-50'
+                  : 'text-rose-700 bg-rose-50'
+            )}
+          >
+            {!neutral && (positive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />)}
+            {Math.abs(kpi.deltaPct).toFixed(1)}%
+          </span>
+        )}
       </div>
       <Sparkline data={kpi.spark} positive={positive} />
     </div>
@@ -401,15 +514,18 @@ function AiBreakdownBar({ data }: { data: DashData['aiBreakdown'] }) {
   return (
     <div className="space-y-3">
       <div className="flex h-7 w-full rounded-lg overflow-hidden bg-gray-100">
-        {segs.map(s => (
-          <div
-            key={s.id}
-            className={cn(s.color, 'flex items-center justify-center text-white text-xs font-semibold')}
-            style={{ width: `${(s.value / total) * 100}%` }}
-          >
-            {(s.value / total) >= 0.08 ? `${Math.round((s.value / total) * 100)}%` : ''}
-          </div>
-        ))}
+        {segs.map(s => {
+          const share = total === 0 ? 0 : s.value / total
+          return (
+            <div
+              key={s.id}
+              className={cn(s.color, 'flex items-center justify-center text-white text-xs font-semibold')}
+              style={{ width: `${share * 100}%` }}
+            >
+              {share >= 0.08 ? `${Math.round(share * 100)}%` : ''}
+            </div>
+          )
+        })}
       </div>
       <div className="flex items-center justify-between text-xs">
         <span className="text-gray-500">Avg confidence on AI replies</span>

@@ -54,7 +54,7 @@ interface MsgRow {
   external_id: string | null
 }
 
-type SuggestResponse = { data?: { text: string; confidence: string; reasoning?: string; sourceCited?: string | null }; error?: string }
+type SuggestResponse = { data?: { text: string; confidence: string; autoSent?: boolean; reasoning?: string; sourceCited?: string | null }; error?: string }
 
 // ─── Mappers ────────────────────────────────────────────────────────────────
 
@@ -499,7 +499,7 @@ export default function Home() {
                   setConversations(prev =>
                     prev.map(c =>
                       c.id === convId
-                        ? { ...c, aiSuggestion: { text: res.data!.text, confidence: res.data!.confidence as 'high' | 'medium' | 'low', autoSent: false, dismissed: false, reasoning: res.data!.reasoning, sourceCited: res.data!.sourceCited } }
+                        ? { ...c, aiSuggestion: { text: res.data!.text, confidence: res.data!.confidence as 'high' | 'medium' | 'low', autoSent: res.data!.autoSent === true, dismissed: false, reasoning: res.data!.reasoning, sourceCited: res.data!.sourceCited } }
                         : c
                     )
                   )
@@ -742,7 +742,7 @@ export default function Home() {
                     aiSuggestion: {
                       text: res.data!.text,
                       confidence: res.data!.confidence as AiConfidence,
-                      autoSent: false,
+                      autoSent: res.data!.autoSent === true,
                       dismissed: false,
                       reasoning: res.data!.reasoning,
                       sourceCited: res.data!.sourceCited,
