@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  BarChart3, ArrowUpRight, ArrowDownRight,
-  MessageSquare, Bot, Users, Sparkles,
+  ArrowUpRight, ArrowDownRight,
+  MessageSquare, Bot, Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { EmptyMetricCard } from '@/components/EmptyMetricCard'
@@ -57,7 +57,7 @@ export default function DashboardPage() {
 
   const data = useMemo(() => getDashboardData(range), [range])
   const {
-    kpis, channelSplit, topTopics, agentRows, customerSignals,
+    kpis, topTopics, customerSignals,
   } = data
 
   useEffect(() => {
@@ -130,11 +130,6 @@ export default function DashboardPage() {
       }
     : { autoSent: 0, drafted: 0, escalated: 0, avgConfidence: 0 }
 
-  const totalChannelRevenue = useMemo(
-    () => channelSplit.reduce((s, c) => s + c.revenue, 0),
-    [channelSplit]
-  )
-
   const totalAiReplies = liveAiBreakdown.autoSent + liveAiBreakdown.drafted + liveAiBreakdown.escalated
   const totalAiRepliesLabel = statsLoading ? '—' : totalAiReplies.toLocaleString()
 
@@ -195,14 +190,13 @@ export default function DashboardPage() {
               />
             </div>
 
-            <Card>
-              <CardHeader
-                title="Channel mix"
-                subtitle="Revenue share"
-                icon={<BarChart3 className="w-4 h-4 text-indigo-600" />}
-              />
-              <ChannelMix data={channelSplit} total={totalChannelRevenue} />
-            </Card>
+            <EmptyMetricCard
+              label="Channel mix"
+              message="Revenue share by channel will appear once you connect Shopee, Lazada, or TikTok Shop."
+              ctaText="Connect a store"
+              ctaHref={storeSettingsHref}
+              variant="list"
+            />
           </section>
 
           {/* ─── AI Performance + Top topics ──────────────────────────── */}
@@ -280,14 +274,15 @@ export default function DashboardPage() {
 
           {/* ─── Agents + Customer signals ────────────────────────────── */}
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card className="lg:col-span-2">
-              <CardHeader
-                title="Agent activity"
-                subtitle="Who's replying, with how much AI help"
-                icon={<Users className="w-4 h-4 text-indigo-600" />}
+            <div className="lg:col-span-2">
+              <EmptyMetricCard
+                label="Agent activity"
+                message="Agent stats will appear once conversations are assigned."
+                ctaText="Go to inbox"
+                ctaHref="/"
+                variant="list"
               />
-              <AgentTable rows={agentRows} />
-            </Card>
+            </div>
 
             <Card>
               <CardHeader
@@ -464,43 +459,6 @@ function Sparkline({ data, positive }: { data: number[]; positive: boolean }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   Channel mix
-   ──────────────────────────────────────────────────────────────────────── */
-
-function ChannelMix({ data, total }: { data: DashData['channelSplit']; total: number }) {
-  return (
-    <div className="space-y-3">
-      {/* Stacked bar */}
-      <div className="flex h-3 w-full rounded-full overflow-hidden bg-gray-100">
-        {data.map(c => (
-          <div
-            key={c.channel}
-            className={c.color}
-            style={{ width: `${(c.revenue / total) * 100}%` }}
-            title={`${c.label} · S$${c.revenue.toLocaleString()}`}
-          />
-        ))}
-      </div>
-      <ul className="space-y-2">
-        {data.map(c => {
-          const pct = (c.revenue / total) * 100
-          return (
-            <li key={c.channel} className="flex items-center gap-3 text-sm">
-              <span className={cn('w-2 h-2 rounded-full flex-shrink-0', c.color)} />
-              <span className="text-gray-700 flex-1 truncate">{c.label}</span>
-              <span className="text-gray-400 text-xs tabular-nums">{pct.toFixed(1)}%</span>
-              <span className="text-gray-900 font-medium tabular-nums w-20 text-right">
-                S${(c.revenue / 1000).toFixed(1)}k
-              </span>
-            </li>
-          )
-        })}
-      </ul>
-    </div>
-  )
-}
-
-/* ────────────────────────────────────────────────────────────────────────
    AI breakdown bar
    ──────────────────────────────────────────────────────────────────────── */
 
@@ -558,60 +516,6 @@ function TopicList({ topics }: { topics: DashData['topTopics'] }) {
         </li>
       ))}
     </ul>
-  )
-}
-
-function ProgressPill({ value }: { value: number }) {
-  return (
-    <div className="inline-flex items-center gap-2">
-      <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-indigo-500 rounded-full"
-          style={{ width: `${value * 100}%` }}
-        />
-      </div>
-      <span className="tabular-nums text-xs text-gray-700 w-8 text-right">
-        {Math.round(value * 100)}%
-      </span>
-    </div>
-  )
-}
-
-/* ────────────────────────────────────────────────────────────────────────
-   Agent table
-   ──────────────────────────────────────────────────────────────────────── */
-
-function AgentTable({ rows }: { rows: DashData['agentRows'] }) {
-  return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="text-xs text-gray-400 uppercase tracking-wider">
-          <th className="text-left font-medium py-2">Agent</th>
-          <th className="text-right font-medium py-2">Handled</th>
-          <th className="text-right font-medium py-2">AI assist</th>
-          <th className="text-right font-medium py-2">Avg response</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(a => (
-          <tr key={a.id} className="border-t border-gray-100">
-            <td className="py-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
-                  {a.initials}
-                </div>
-                <span className="text-gray-900 font-medium">{a.name}</span>
-              </div>
-            </td>
-            <td className="py-3 text-right tabular-nums text-gray-700">{a.conversationsHandled}</td>
-            <td className="py-3 text-right">
-              <ProgressPill value={a.aiAssistPct} />
-            </td>
-            <td className="py-3 text-right tabular-nums text-gray-700">{a.avgResponseMin.toFixed(1)}m</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   )
 }
 
