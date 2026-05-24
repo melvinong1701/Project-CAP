@@ -12,7 +12,6 @@ import {
 } from '@/lib/aiRouter'
 import type { Channel } from '@/lib/types'
 import { requireAuth } from '@/lib/getOrgId'
-import { sendTelegramMessage } from '@/lib/sendTelegramMessage'
 
 const CATALOG_INTENTS = new Set<AiIntent>(['product_question', 'pricing', 'availability'])
 
@@ -198,7 +197,7 @@ export async function POST(req: NextRequest) {
       if (conversation.store_id) {
         const { data: config, error: configErr } = await supabase
           .from('store_ai_config')
-          .select('store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions, custom_guardrails, auto_send_enabled')
+          .select('store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions, custom_guardrails')
           .eq('store_id', conversation.store_id)
           .eq('organization_id', ORG_ID)
           .maybeSingle()
@@ -261,25 +260,6 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await suggestReply(suggestInput, preprocessing)
-    let didAutoSend = false
-
-    if (
-      body.conversationId &&
-      storeConfig?.auto_send_enabled === true &&
-      result.confidence === 'high'
-    ) {
-      const sendResult = await sendTelegramMessage(supabase, {
-        conversationId: body.conversationId,
-        organizationId: ORG_ID,
-        text: result.text,
-      })
-
-      if (sendResult.ok) {
-        didAutoSend = true
-      } else {
-        console.error('Auto-send failed:', sendResult.error)
-      }
-    }
 
     if (body.conversationId) {
       const { error: updateErr } = await supabase
@@ -288,7 +268,7 @@ export async function POST(req: NextRequest) {
           ai_suggestion: {
             text: result.text,
             confidence: result.confidence,
-            autoSent: didAutoSend,
+            autoSent: false, // auto-send not yet implemented — never persist true until the pipeline is built
             dismissed: false,
             reasoning: result.reasoning ?? null,
             sourceCited: result.sourceCited ?? null,
@@ -303,7 +283,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({
-      data: { ...result, autoSent: didAutoSend },
+      data: result,
     })
   } catch (err) {
     console.error('AI suggest error:', err instanceof Error ? err.message : 'Unknown error')

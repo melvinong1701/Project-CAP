@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ConnectedPlatformsTab from './stores/[storeId]/components/ConnectedPlatformsTab'
 import {
-  ArrowLeft, Store, Bell, Users, CreditCard,
+  ArrowLeft, Store, Bot, Bell, Users, CreditCard,
   Check, X, Plus, Mail, Eye, ChevronDown, ChevronRight,
   Crown, UserCog, MessageSquare, Trash2,
   AlertCircle, Loader2, Lock,
@@ -14,18 +14,30 @@ import { cn } from '@/lib/utils'
 
 const navItems = [
   { id: 'stores', label: 'Stores', icon: Store },
+  { id: 'ai', label: 'AI settings', icon: Bot },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'team', label: 'Team & agents', icon: Users },
   { id: 'billing', label: 'Plan & billing', icon: CreditCard },
 ]
 
-// ─── Store AI config data ────────────────────────────────────────────────────
+// ─── AI settings data ────────────────────────────────────────────────────────
 
+type ConfidencePreset = 'conservative' | 'balanced' | 'aggressive'
 type ReplyTone = 'professional' | 'friendly' | 'casual'
+type LanguageBehaviour = 'match_buyer' | 'store_primary' | 'english'
+
+interface AiSettings {
+  autoReplyEnabled: boolean
+  confidencePreset: ConfidencePreset
+  confidenceThresholds: { autoSend: number; draft: number }
+  replyTone: ReplyTone
+  languageBehaviour: LanguageBehaviour
+  replyDelayEnabled: boolean
+  replyDelaySeconds: number
+}
 
 interface StoreAiConfigFields {
   replyTone: ReplyTone
-  autoSendEnabled: boolean
   brandVoice: string
   whatWeSell: string
   returnPolicy: string
@@ -90,15 +102,50 @@ const PLATFORM_GUARDRAILS_DISPLAY: PlatformGuardrail[] = [
   },
 ]
 
+const aiSettingsStorageKey = 'cap_ai_settings'
+
+const confidencePresets: Record<ConfidencePreset, { label: string; thresholds: AiSettings['confidenceThresholds'] }> = {
+  conservative: { label: 'Conservative', thresholds: { autoSend: 90, draft: 70 } },
+  balanced: { label: 'Balanced', thresholds: { autoSend: 80, draft: 60 } },
+  aggressive: { label: 'Aggressive', thresholds: { autoSend: 70, draft: 50 } },
+}
+
 const replyToneOptions: { value: ReplyTone; label: string }[] = [
   { value: 'professional', label: 'Professional' },
   { value: 'friendly', label: 'Friendly' },
   { value: 'casual', label: 'Casual' },
 ]
 
+const languageBehaviourOptions: { value: LanguageBehaviour; label: string; description: string }[] = [
+  {
+    value: 'match_buyer',
+    label: 'Match buyer\'s language',
+    description: 'AI detects and replies in the language the buyer used.',
+  },
+  {
+    value: 'store_primary',
+    label: 'Store\'s primary language',
+    description: 'Always reply in the language set on each store.',
+  },
+  {
+    value: 'english',
+    label: 'Always English',
+    description: 'Reply in English regardless of what the buyer wrote.',
+  },
+]
+
+const defaultAiSettings: AiSettings = {
+  autoReplyEnabled: true,
+  confidencePreset: 'balanced',
+  confidenceThresholds: { autoSend: 80, draft: 60 },
+  replyTone: 'friendly',
+  languageBehaviour: 'match_buyer',
+  replyDelayEnabled: false,
+  replyDelaySeconds: 10,
+}
+
 const defaultStoreAiConfigFields: StoreAiConfigFields = {
   replyTone: 'friendly',
-  autoSendEnabled: false,
   brandVoice: '',
   whatWeSell: '',
   returnPolicy: '',
@@ -106,6 +153,17 @@ const defaultStoreAiConfigFields: StoreAiConfigFields = {
   commonFaqs: '',
   customGuardrails: [],
 }
+
+const clampNumber = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
+const booleanValue = (value: unknown, fallback: boolean) =>
+  typeof value === 'boolean' ? value : fallback
+
+const numberValue = (value: unknown, fallback: number, min: number, max: number) =>
+  typeof value === 'number' && Number.isFinite(value) ? clampNumber(value, min, max) : fallback
 
 const customInstructionSections = [
   { label: 'Brand voice', field: 'brandVoice' },
@@ -119,7 +177,34 @@ interface ApiStoreAiConfigRow {
   shipping_policy: string | null
   custom_instructions: string | null
   custom_guardrails: string[] | null
-  auto_send_enabled: boolean | null
+}
+
+function parseStoredAiSettings(value: unknown): AiSettings {
+  if (!isRecord(value)) return defaultAiSettings
+
+  const thresholds = isRecord(value.confidenceThresholds) ? value.confidenceThresholds : {}
+  const confidencePreset = ['conservative', 'balanced', 'aggressive'].includes(String(value.confidencePreset))
+    ? value.confidencePreset as ConfidencePreset
+    : defaultAiSettings.confidencePreset
+  const replyTone = ['professional', 'friendly', 'casual'].includes(String(value.replyTone))
+    ? value.replyTone as ReplyTone
+    : defaultAiSettings.replyTone
+  const languageBehaviour = ['match_buyer', 'store_primary', 'english'].includes(String(value.languageBehaviour))
+    ? value.languageBehaviour as LanguageBehaviour
+    : defaultAiSettings.languageBehaviour
+
+  return {
+    autoReplyEnabled: booleanValue(value.autoReplyEnabled, defaultAiSettings.autoReplyEnabled),
+    confidencePreset,
+    confidenceThresholds: {
+      autoSend: numberValue(thresholds.autoSend, defaultAiSettings.confidenceThresholds.autoSend, 0, 100),
+      draft: numberValue(thresholds.draft, defaultAiSettings.confidenceThresholds.draft, 0, 100),
+    },
+    replyTone,
+    languageBehaviour,
+    replyDelayEnabled: booleanValue(value.replyDelayEnabled, defaultAiSettings.replyDelayEnabled),
+    replyDelaySeconds: numberValue(value.replyDelaySeconds, defaultAiSettings.replyDelaySeconds, 5, 60),
+  }
 }
 
 function parseCustomInstructions(customInstructions: string | null | undefined): Pick<
@@ -162,7 +247,6 @@ function deserializeAiConfig(row: ApiStoreAiConfigRow | null): StoreAiConfigFiel
     ...defaultStoreAiConfigFields,
     ...parseCustomInstructions(row.custom_instructions),
     replyTone,
-    autoSendEnabled: typeof row.auto_send_enabled === 'boolean' ? row.auto_send_enabled : false,
     returnPolicy: row.return_policy ?? '',
     shippingPolicy: row.shipping_policy ?? '',
     customGuardrails: Array.isArray(row.custom_guardrails) ? row.custom_guardrails : [],
@@ -185,7 +269,6 @@ function serializeAiConfig(fields: StoreAiConfigFields, store: StoreRecord) {
     shippingPolicy: fields.shippingPolicy,
     customInstructions: parts.join('\n\n'),
     customGuardrails: fields.customGuardrails,
-    autoSendEnabled: fields.autoSendEnabled,
   }
 }
 
@@ -272,17 +355,6 @@ const emptyPlatforms = (): Record<PlatformId, string | null> => ({
 
 type Role = 'owner' | 'admin' | 'agent' | 'viewer'
 
-interface AccountRoleResponse {
-  data?: {
-    role?: unknown
-    storedRole?: unknown
-    account?: {
-      role?: unknown
-      storedRole?: unknown
-    }
-  } | null
-}
-
 interface TeamMember {
   id: string
   name: string
@@ -290,8 +362,13 @@ interface TeamMember {
   role: Role
   status: 'active' | 'invited'
   avatar: string
-  isCurrentUser?: boolean
 }
+
+const initialTeam: TeamMember[] = [
+  { id: '1', name: 'Melvin', email: 'melvinong1701@gmail.com', role: 'owner', status: 'active', avatar: 'M' },
+  { id: '2', name: 'Ryan', email: 'ryan@projectcap.app', role: 'admin', status: 'active', avatar: 'R' },
+  { id: '3', name: 'Martin', email: 'martin@projectcap.app', role: 'admin', status: 'active', avatar: 'M' },
+]
 
 const roleConfig: Record<Role, { label: string; color: string; bg: string; icon: React.ElementType }> = {
   owner: { label: 'Owner', color: 'text-amber-700', bg: 'bg-amber-50', icon: Crown },
@@ -306,22 +383,6 @@ const roleDescriptions: Record<Role, string> = {
   agent: 'Can view and reply to conversations, use AI suggestions, and assign chats. No settings access.',
   viewer: 'Read-only. Can see conversations but cannot reply or make changes.',
 }
-
-function isUserRole(value: unknown): value is Role {
-  return value === 'owner' || value === 'admin' || value === 'agent' || value === 'viewer'
-}
-
-interface ApiTeamMember {
-  id: string
-  email: string
-  role: string
-  status?: string
-  displayName: string
-  avatarUrl: string | null
-  isCurrentUser: boolean
-}
-
-type InviteResult = { ok: boolean; error?: string }
 
 const permissions = [
   { label: 'View all conversations', owner: true, admin: true, agent: true, viewer: true },
@@ -350,28 +411,16 @@ function RoleBadge({ role }: { role: Role }) {
   )
 }
 
-function ToggleSwitch({
-  enabled,
-  onChange,
-  label,
-  disabled = false,
-}: {
-  enabled: boolean
-  onChange: (enabled: boolean) => void
-  label: string
-  disabled?: boolean
-}) {
+function ToggleSwitch({ enabled, onChange, label }: { enabled: boolean; onChange: (enabled: boolean) => void; label: string }) {
   return (
     <button
       type="button"
       onClick={() => onChange(!enabled)}
-      disabled={disabled}
       aria-pressed={enabled}
       aria-label={label}
       className={cn(
         'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2',
-        enabled ? 'bg-indigo-600' : 'bg-gray-200',
-        disabled && 'cursor-not-allowed opacity-50'
+        enabled ? 'bg-indigo-600' : 'bg-gray-200'
       )}
     >
       <span
@@ -601,28 +650,18 @@ function AddStoreForm({ onBack, onSave }: AddStoreFormProps) {
 
 interface InviteModalProps {
   onClose: () => void
-  onInvite: (email: string, role: Role) => Promise<InviteResult>
+  onInvite: (email: string, role: Role) => void
 }
 
 function InviteModal({ onClose, onInvite }: InviteModalProps) {
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<Role>('agent')
   const [sent, setSent] = useState(false)
-  const [inviting, setInviting] = useState(false)
-  const [inviteError, setInviteError] = useState<string | null>(null)
 
-  const handleSubmit = async () => {
-    if (!email.includes('@') || inviting) return
-    setInviting(true)
-    setInviteError(null)
-    const result = await onInvite(email, role)
-    setInviting(false)
-
-    if (result.ok) {
-      setSent(true)
-    } else {
-      setInviteError(result.error ?? 'Something went wrong.')
-    }
+  const handleSubmit = () => {
+    if (!email.includes('@')) return
+    onInvite(email, role)
+    setSent(true)
   }
 
   return (
@@ -681,19 +720,13 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
                 </div>
               </div>
             </div>
-            {inviteError && (
-              <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 rounded-lg p-3">
-                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                <p>{inviteError}</p>
-              </div>
-            )}
             <button
               onClick={handleSubmit}
-              disabled={!email.includes('@') || inviting}
+              disabled={!email.includes('@')}
               className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
             >
-              {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-              {inviting ? 'Sending...' : 'Send invite'}
+              <Mail className="w-4 h-4" />
+              Send invite
             </button>
           </>
         ) : (
@@ -761,40 +794,10 @@ function RoleDropdown({ member, onChange }: { member: TeamMember; onChange: (rol
 export default function SettingsPage() {
   const router = useRouter()
   const [activeSection, setActiveSection] = useState('stores')
-  const [currentUserRole, setCurrentUserRole] = useState<Role | null>(null)
-  const isOwner = currentUserRole === 'owner'
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function fetchCurrentUserRole() {
-      try {
-        const res = await fetch('/api/account')
-        if (!res.ok) return
-
-        const { data } = await res.json() as AccountRoleResponse
-        const role = data?.account?.storedRole ?? data?.account?.role ?? data?.storedRole ?? data?.role
-        if (!cancelled && isUserRole(role)) {
-          setCurrentUserRole(role)
-        }
-      } catch {
-      }
-    }
-
-    fetchCurrentUserRole()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   // Stores state — fetched from Supabase
   const [stores, setStores] = useState<StoreRecord[]>([])
   const [storesLoading, setStoresLoading] = useState(true)
-  const [team, setTeam] = useState<TeamMember[]>([])
-  const [teamLoading, setTeamLoading] = useState(true)
-  const [showInvite, setShowInvite] = useState(false)
-  const [showPermissions, setShowPermissions] = useState(false)
 
   useEffect(() => {
     async function fetchStores() {
@@ -828,44 +831,6 @@ export default function SettingsPage() {
     }
     fetchStores()
   }, [])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function fetchMembers() {
-      setTeamLoading(true)
-      try {
-        const res = await fetch('/api/org/members')
-        if (!res.ok) return
-
-        const { data } = await res.json() as { data: { members: ApiTeamMember[] } | null }
-        if (cancelled || !data) return
-
-        setTeam(data.members.map(member => {
-          const name = member.displayName || member.email.split('@')[0] || 'User'
-          const status: TeamMember['status'] = member.status === 'invited' ? 'invited' : 'active'
-          return {
-            id: member.id,
-            name,
-            email: member.email,
-            role: isUserRole(member.role) ? member.role : 'agent',
-            status,
-            avatar: name.charAt(0).toUpperCase(),
-            isCurrentUser: member.isCurrentUser,
-          }
-        }))
-      } catch {
-      } finally {
-        if (!cancelled) setTeamLoading(false)
-      }
-    }
-
-    fetchMembers()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const [storesView, setStoresView] = useState<'list' | 'add' | 'platforms'>('list')
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
   const [storeTab, setStoreTab] = useState<'platforms' | 'ai'>('platforms')
@@ -960,8 +925,37 @@ export default function SettingsPage() {
     setStoreTab('platforms')
     setStoreAiConfig(defaultStoreAiConfigFields)
     setStoreAiSaved(false)
+    setAiSaved(false)
     setStoresView('platforms')
   }
+
+  // Team state
+  const [team, setTeam] = useState<TeamMember[]>(initialTeam)
+  const [showInvite, setShowInvite] = useState(false)
+  const [showPermissions, setShowPermissions] = useState(false)
+
+  // AI behaviour state — persisted locally for workspace-wide controls.
+  const [aiSettings, setAiSettings] = useState<AiSettings>(defaultAiSettings)
+  const [showAdvancedConfidence, setShowAdvancedConfidence] = useState(false)
+  const [aiSaved, setAiSaved] = useState(false)
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(aiSettingsStorageKey)
+    if (!stored) return
+
+    try {
+      setAiSettings(parseStoredAiSettings(JSON.parse(stored) as unknown))
+    } catch {
+      setAiSettings(defaultAiSettings)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!aiSaved) return undefined
+
+    const timeoutId = window.setTimeout(() => setAiSaved(false), 2000)
+    return () => window.clearTimeout(timeoutId)
+  }, [aiSaved])
 
   useEffect(() => {
     if (!storeAiSaved) return undefined
@@ -970,36 +964,16 @@ export default function SettingsPage() {
     return () => window.clearTimeout(timeoutId)
   }, [storeAiSaved])
 
-  const handleInvite = async (email: string, role: Role): Promise<InviteResult> => {
-    const normalizedEmail = email.trim().toLowerCase()
-
-    try {
-      const res = await fetch('/api/org/invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail, role }),
-      })
-      const json = await res.json() as { data: { ok: boolean } | null; error: string | null }
-
-      if (!res.ok || json.error) {
-        return { ok: false, error: json.error ?? 'Failed to send invite' }
-      }
-
-      const name = normalizedEmail.split('@')[0] || 'User'
-      const displayName = name.charAt(0).toUpperCase() + name.slice(1)
-      setTeam(prev => [...prev, {
-        id: `pending-${Date.now()}`,
-        name: displayName,
-        email: normalizedEmail,
-        role,
-        status: 'invited',
-        avatar: displayName.charAt(0).toUpperCase(),
-        isCurrentUser: false,
-      }])
-      return { ok: true }
-    } catch {
-      return { ok: false, error: 'Network error. Please try again.' }
-    }
+  const handleInvite = (email: string, role: Role) => {
+    const name = email.split('@')[0]
+    setTeam(prev => [...prev, {
+      id: String(Date.now()),
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      email,
+      role,
+      status: 'invited',
+      avatar: name.charAt(0).toUpperCase(),
+    }])
   }
 
   const handleRoleChange = (memberId: string, role: Role) => {
@@ -1010,8 +984,40 @@ export default function SettingsPage() {
     setTeam(prev => prev.filter(m => m.id !== memberId))
   }
 
+  const updateAiSettings = <Key extends keyof AiSettings>(key: Key, value: AiSettings[Key]) => {
+    setAiSettings(prev => ({ ...prev, [key]: value }))
+  }
+
   const updateStoreAiConfig = <Key extends keyof StoreAiConfigFields>(key: Key, value: StoreAiConfigFields[Key]) => {
     setStoreAiConfig(prev => ({ ...prev, [key]: value }))
+  }
+
+  const handleConfidencePresetChange = (preset: ConfidencePreset) => {
+    setAiSettings(prev => ({
+      ...prev,
+      confidencePreset: preset,
+      confidenceThresholds: confidencePresets[preset].thresholds,
+    }))
+  }
+
+  const handleConfidenceThresholdChange = (field: keyof AiSettings['confidenceThresholds'], value: number) => {
+    const nextValue = Number.isFinite(value) ? clampNumber(value, 0, 100) : 0
+    setAiSettings(prev => ({
+      ...prev,
+      confidenceThresholds: {
+        ...prev.confidenceThresholds,
+        [field]: nextValue,
+      },
+    }))
+  }
+
+  const handleReplyDelayChange = (value: number) => {
+    updateAiSettings('replyDelaySeconds', Number.isFinite(value) ? clampNumber(value, 5, 60) : 5)
+  }
+
+  const handleSaveAiSettings = () => {
+    window.localStorage.setItem(aiSettingsStorageKey, JSON.stringify(aiSettings))
+    setAiSaved(true)
   }
 
   const handleSaveStoreAiConfig = async () => {
@@ -1274,29 +1280,6 @@ export default function SettingsPage() {
                     )}
 
                     <div className="bg-white rounded-2xl border border-gray-100 p-6">
-                      <div className="flex items-start justify-between gap-6">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">Auto-send high confidence replies</p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            When enabled, Project CAP sends high-confidence AI replies for this store without agent review.
-                          </p>
-                          {currentUserRole && !isOwner && (
-                            <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-amber-700">
-                              <Lock className="w-3.5 h-3.5" />
-                              Owner permission required
-                            </p>
-                          )}
-                        </div>
-                        <ToggleSwitch
-                          enabled={storeAiConfig.autoSendEnabled}
-                          label="Toggle auto-send high confidence replies"
-                          disabled={!isOwner}
-                          onChange={enabled => updateStoreAiConfig('autoSendEnabled', enabled)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-2xl border border-gray-100 p-6">
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">
                         Reply tone
                       </p>
@@ -1465,6 +1448,209 @@ export default function SettingsPage() {
             </>
           )}
 
+          {/* ── AI Settings ───────────────────────────────── */}
+          {activeSection === 'ai' && (
+            <>
+              <div className="mb-8">
+                <h1 className="text-lg font-semibold text-gray-900">AI behaviour</h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  Workspace-wide controls for how AI handles conversations. Store-specific context
+                  (tone, policies, FAQs) is configured per store under Stores → [store name] → AI context.
+                </p>
+              </div>
+
+              <div className="space-y-6">
+                <div className="bg-white rounded-2xl border border-gray-100 p-6">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-5">
+                    Behaviour controls
+                  </p>
+
+                  <div className="space-y-6">
+                    <div className="flex items-start justify-between gap-6">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">Auto-reply</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          AI sends high-confidence replies automatically. Medium confidence creates a draft for review.
+                        </p>
+                      </div>
+                      <ToggleSwitch
+                        enabled={aiSettings.autoReplyEnabled}
+                        label="Toggle auto-reply"
+                        onChange={enabled => updateAiSettings('autoReplyEnabled', enabled)}
+                      />
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Confidence threshold</p>
+                      <p className="text-xs text-gray-400 mt-1 mb-3">
+                        Controls when AI acts automatically vs. flags for human review.
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(Object.keys(confidencePresets) as ConfidencePreset[]).map(preset => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => handleConfidencePresetChange(preset)}
+                            className={cn(
+                              'rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-colors',
+                              aiSettings.confidencePreset === preset
+                                ? 'bg-indigo-600 text-white'
+                                : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                            )}
+                          >
+                            {confidencePresets[preset].label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedConfidence(open => !open)}
+                        className="mt-4 flex items-center gap-2 text-xs font-semibold text-gray-500 hover:text-gray-800 transition-colors"
+                      >
+                        <ChevronDown className={cn('w-4 h-4 transition-transform', showAdvancedConfidence && 'rotate-180')} />
+                        Advanced
+                      </button>
+
+                      {showAdvancedConfidence && (
+                        <div className="mt-3 rounded-xl bg-gray-50 p-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label htmlFor="ai-auto-send-threshold" className="text-xs font-medium text-gray-500 mb-1.5 block">
+                                Auto-send above (%)
+                              </label>
+                              <input
+                                id="ai-auto-send-threshold"
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={aiSettings.confidenceThresholds.autoSend}
+                                onChange={e => handleConfidenceThresholdChange('autoSend', e.currentTarget.valueAsNumber)}
+                                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label htmlFor="ai-draft-threshold" className="text-xs font-medium text-gray-500 mb-1.5 block">
+                                Draft for review above (%)
+                              </label>
+                              <input
+                                id="ai-draft-threshold"
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={aiSettings.confidenceThresholds.draft}
+                                onChange={e => handleConfidenceThresholdChange('draft', e.currentTarget.valueAsNumber)}
+                                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                              />
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-3">
+                            Conversations below the draft threshold are escalated to a human.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 mb-3">Reply tone</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {replyToneOptions.map(option => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => updateAiSettings('replyTone', option.value)}
+                            className={cn(
+                              'rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-colors',
+                              aiSettings.replyTone === option.value
+                                ? 'bg-indigo-600 text-white'
+                                : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                            )}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 mb-3">Response language</p>
+                      <div className="space-y-2">
+                        {languageBehaviourOptions.map(option => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => updateAiSettings('languageBehaviour', option.value)}
+                            className={cn(
+                              'w-full flex items-start gap-3 px-3.5 py-3 rounded-xl border text-left transition-all',
+                              aiSettings.languageBehaviour === option.value
+                                ? 'border-indigo-300 bg-indigo-50'
+                                : 'border-gray-100 hover:border-gray-200'
+                            )}
+                          >
+                            <span className={cn(
+                              'mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border',
+                              aiSettings.languageBehaviour === option.value ? 'border-indigo-600' : 'border-gray-300'
+                            )}>
+                              {aiSettings.languageBehaviour === option.value && (
+                                <span className="h-2 w-2 rounded-full bg-indigo-600" />
+                              )}
+                            </span>
+                            <span className="flex-1">
+                              <span className="block text-sm font-medium text-gray-900">{option.label}</span>
+                              <span className="block text-xs text-gray-400 mt-0.5">{option.description}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-start justify-between gap-6">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">Reply delay</p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            Adds a short pause before sending so replies don&apos;t feel instant.
+                          </p>
+                        </div>
+                        <ToggleSwitch
+                          enabled={aiSettings.replyDelayEnabled}
+                          label="Toggle reply delay"
+                          onChange={enabled => updateAiSettings('replyDelayEnabled', enabled)}
+                        />
+                      </div>
+
+                      {aiSettings.replyDelayEnabled && (
+                        <div className="mt-3 max-w-xs">
+                          <label htmlFor="ai-reply-delay-seconds" className="text-xs font-medium text-gray-500 mb-1.5 block">Delay (seconds)</label>
+                          <input
+                            id="ai-reply-delay-seconds"
+                            type="number"
+                            min={5}
+                            max={60}
+                            value={aiSettings.replyDelaySeconds}
+                            onChange={e => handleReplyDelayChange(e.currentTarget.valueAsNumber)}
+                            className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSaveAiSettings}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl py-2.5 px-5 transition-colors inline-flex items-center gap-2"
+                  >
+                    {aiSaved && <Check className="w-4 h-4" />}
+                    {aiSaved ? 'Settings saved' : 'Save settings'}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* ── Team & Agents ─────────────────────────────── */}
           {activeSection === 'team' && (
             <>
@@ -1494,54 +1680,48 @@ export default function SettingsPage() {
                   <p className="text-xs text-gray-400 w-20 text-right hidden sm:block">Status</p>
                   <span className="w-8" />
                 </div>
-                {teamLoading ? (
-                  <div className="flex items-center justify-center h-32">
-                    <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
-                  </div>
-                ) : (
-                  <div className="divide-y divide-gray-50">
-                    {team.map(member => (
-                      <div key={member.id} className="flex items-center gap-4 px-5 py-3.5">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-indigo-700 font-semibold text-sm flex-shrink-0">
-                          {member.avatar}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {member.name}
-                            {member.isCurrentUser && (
-                              <span className="ml-1.5 text-xs text-gray-400 font-normal">(you)</span>
-                            )}
-                          </p>
-                          <p className="text-xs text-gray-400 truncate">{member.email}</p>
-                        </div>
-                        <div className="w-28 flex-shrink-0">
-                          <RoleDropdown
-                            member={member}
-                            onChange={role => handleRoleChange(member.id, role)}
-                          />
-                        </div>
-                        <div className="w-20 flex-shrink-0 text-right hidden sm:block">
-                          {member.status === 'invited' ? (
-                            <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">Invited</span>
-                          ) : (
-                            <span className="text-xs text-gray-400">Active</span>
-                          )}
-                        </div>
-                        <div className="w-8 flex justify-end">
-                          {member.role !== 'owner' && (
-                            <button
-                              onClick={() => handleRemove(member.id)}
-                              className="text-gray-300 hover:text-red-400 transition-colors"
-                              title="Remove member"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
+                <div className="divide-y divide-gray-50">
+                  {team.map(member => (
+                    <div key={member.id} className="flex items-center gap-4 px-5 py-3.5">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center text-indigo-700 font-semibold text-sm flex-shrink-0">
+                        {member.avatar}
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {member.name}
+                          {member.email === 'melvinong1701@gmail.com' && (
+                            <span className="ml-1.5 text-xs text-gray-400 font-normal">(you)</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-gray-400 truncate">{member.email}</p>
+                      </div>
+                      <div className="w-28 flex-shrink-0">
+                        <RoleDropdown
+                          member={member}
+                          onChange={role => handleRoleChange(member.id, role)}
+                        />
+                      </div>
+                      <div className="w-20 flex-shrink-0 text-right hidden sm:block">
+                        {member.status === 'invited' ? (
+                          <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">Invited</span>
+                        ) : (
+                          <span className="text-xs text-gray-400">Active</span>
+                        )}
+                      </div>
+                      <div className="w-8 flex justify-end">
+                        {member.role !== 'owner' && (
+                          <button
+                            onClick={() => handleRemove(member.id)}
+                            className="text-gray-300 hover:text-red-400 transition-colors"
+                            title="Remove member"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* Role descriptions */}
@@ -1614,7 +1794,7 @@ export default function SettingsPage() {
           )}
 
           {/* ── Other sections (placeholder) ──────────────── */}
-          {activeSection !== 'stores' && activeSection !== 'team' && (
+          {activeSection !== 'stores' && activeSection !== 'team' && activeSection !== 'ai' && (
             <div className="flex flex-col items-center justify-center h-64 text-center">
               <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
                 {(() => {

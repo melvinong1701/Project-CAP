@@ -11,13 +11,11 @@ interface MemberRow {
   full_name: string | null
   display_name: string | null
   avatar_url: string | null
-  email_verified: boolean | null
   created_at: string
 }
 
-function normalizeRole(role: string): string {
-  if (role === 'owner' || role === 'admin' || role === 'agent' || role === 'viewer') return role
-  return 'agent'
+function normalizeRole(role: string) {
+  return role === 'agent' ? 'agent' : 'owner'
 }
 
 export async function GET() {
@@ -28,7 +26,7 @@ export async function GET() {
     const supabase = createSupabaseAdminClient()
     const { data, error } = await supabase
       .from('user_profiles')
-      .select('id, email, role, full_name, display_name, avatar_url, email_verified, created_at')
+      .select('id, email, role, full_name, display_name, avatar_url, created_at')
       .eq('organization_id', ctx.organizationId)
       .order('created_at')
       .returns<MemberRow[]>()
@@ -42,12 +40,10 @@ export async function GET() {
       data: {
         members: (data ?? []).map(member => {
           const fallbackName = member.email.split('@')[0] || 'User'
-          const role = normalizeRole(member.role)
           return {
             id: member.id,
             email: member.email,
-            role,
-            status: member.email_verified || member.id === ctx.userId || role === 'owner' ? 'active' : 'invited',
+            role: normalizeRole(member.role),
             fullName: member.full_name ?? fallbackName,
             displayName: member.display_name ?? member.full_name ?? fallbackName,
             avatarUrl: member.avatar_url,

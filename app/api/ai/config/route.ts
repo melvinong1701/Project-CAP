@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { requireAuth, requireOwner } from '@/lib/getOrgId'
+import { requireAuth } from '@/lib/getOrgId'
 
 interface StoreAiConfigBody {
   storeId?: unknown
@@ -11,7 +11,6 @@ interface StoreAiConfigBody {
   shippingPolicy?: unknown
   customInstructions?: unknown
   customGuardrails?: unknown
-  autoSendEnabled?: unknown
 }
 
 function getSupabase() {
@@ -45,7 +44,7 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabase()
     const { data, error } = await supabase
       .from('store_ai_config')
-      .select('id, organization_id, store_id, store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions, custom_guardrails, auto_send_enabled, created_at, updated_at')
+      .select('id, organization_id, store_id, store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions, custom_guardrails, created_at, updated_at')
       .eq('store_id', storeId)
       .eq('organization_id', ORG_ID)
       .maybeSingle()
@@ -64,9 +63,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const ctx = await requireOwner()
+    const ctx = await requireAuth()
     if (ctx instanceof NextResponse) return ctx
-    if (ctx.storedRole !== 'owner') return jsonError('Forbidden', 403)
     const ORG_ID = ctx.organizationId
 
     const body = await req.json() as StoreAiConfigBody
@@ -116,7 +114,6 @@ export async function POST(req: NextRequest) {
           shipping_policy: shippingPolicy,
           custom_instructions: customInstructions,
           custom_guardrails: customGuardrails,
-          auto_send_enabled: typeof body.autoSendEnabled === 'boolean' ? body.autoSendEnabled : false,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'store_id' }

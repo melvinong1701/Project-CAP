@@ -37,7 +37,6 @@ export interface StoreConfig {
   shipping_policy?: string | null
   custom_instructions?: string | null
   custom_guardrails?: string[] | null
-  auto_send_enabled?: boolean | null
 }
 
 export interface RetrievedContextSnippet {

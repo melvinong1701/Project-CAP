@@ -3,11 +3,10 @@
 import { useMemo, useState } from 'react'
 import {
   BarChart3, ArrowUpRight, ArrowDownRight,
-  AlertTriangle, Package, MessageSquare, Bot, ShoppingBag,
-  TrendingUp, Users, Sparkles,
+  MessageSquare, Bot, Users, Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ChannelBadge } from '@/components/ChannelBadge'
+import { EmptyMetricCard } from '@/components/EmptyMetricCard'
 import { Sidebar } from '@/components/Sidebar'
 import { getDashboardData } from '@/lib/dashboardData'
 import { useStores } from '@/lib/useStores'
@@ -15,15 +14,19 @@ import { useStores } from '@/lib/useStores'
 type Range = '24h' | '7d' | '30d'
 type DashData = ReturnType<typeof getDashboardData>
 
+const storeSettingsHref = '/settings'
+const emptyKpiMessages: Record<string, string> = {
+  revenue: 'Revenue tracking starts when you connect Shopee, Lazada, TikTok Shop, or Shopify.',
+  orders: 'Order tracking starts when you connect a marketplace store.',
+}
+
 export default function DashboardPage() {
   const [range, setRange] = useState<Range>('7d')
   const { stores } = useStores()
 
   const data = useMemo(() => getDashboardData(range), [range])
   const {
-    kpis, revenueSeries, revenueMeta, channelSplit, aiBreakdown,
-    topTopics, bestSellers, inventoryAlerts, storeLeaderboard,
-    agentRows, customerSignals,
+    kpis, channelSplit, aiBreakdown, topTopics, agentRows, customerSignals,
   } = data
 
   const totalChannelRevenue = useMemo(
@@ -56,27 +59,39 @@ export default function DashboardPage() {
         <main className="px-8 py-6 space-y-6 max-w-[1400px]">
 
           {/* ─── KPI grid ─────────────────────────────────────────────── */}
-          <section className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-            {kpis.map(k => (
-              <KpiCard key={k.id} kpi={k} />
-            ))}
+          <section className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+            {kpis.map(k => {
+              if (k.id === 'csat') return null
+
+              const emptyMessage = emptyKpiMessages[k.id]
+              if (emptyMessage) {
+                return (
+                  <EmptyMetricCard
+                    key={k.id}
+                    label={k.label}
+                    message={emptyMessage}
+                    ctaText="Connect a store"
+                    ctaHref={storeSettingsHref}
+                    variant="kpi"
+                  />
+                )
+              }
+
+              return <KpiCard key={k.id} kpi={k} />
+            })}
           </section>
 
           {/* ─── Revenue trend + Channel mix ──────────────────────────── */}
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card className="lg:col-span-2">
-              <CardHeader
-                title="Revenue trend"
-                subtitle={revenueMeta.subtitle}
-                icon={<TrendingUp className="w-4 h-4 text-indigo-600" />}
+            <div className="lg:col-span-2">
+              <EmptyMetricCard
+                label="Revenue trend"
+                message="Connect a store to track revenue over time."
+                ctaText="Connect a store"
+                ctaHref={storeSettingsHref}
+                variant="chart"
               />
-              <RevenueAreaChart data={revenueSeries} />
-              <div className="grid grid-cols-3 gap-4 pt-4 mt-4 border-t border-gray-100">
-                {revenueMeta.stats.map(s => (
-                  <Stat key={s.label} label={s.label} value={s.value} sub={s.sub} />
-                ))}
-              </div>
-            </Card>
+            </div>
 
             <Card>
               <CardHeader
@@ -131,35 +146,34 @@ export default function DashboardPage() {
 
           {/* ─── Best sellers + Inventory alerts ──────────────────────── */}
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card className="lg:col-span-2">
-              <CardHeader
-                title="Best sellers"
-                subtitle="Top 5 products by revenue · last 7 days"
-                icon={<ShoppingBag className="w-4 h-4 text-indigo-600" />}
+            <div className="lg:col-span-2">
+              <EmptyMetricCard
+                label="Best sellers"
+                message="Top products will appear once your store has orders."
+                ctaText="Connect a store"
+                ctaHref={storeSettingsHref}
+                variant="list"
               />
-              <BestSellersTable rows={bestSellers} />
-            </Card>
+            </div>
 
-            <Card>
-              <CardHeader
-                title="Inventory alerts"
-                subtitle={`${inventoryAlerts.filter(i => i.status === 'out').length} out of stock · ${inventoryAlerts.filter(i => i.status === 'low').length} running low`}
-                icon={<Package className="w-4 h-4 text-indigo-600" />}
-              />
-              <InventoryAlertList alerts={inventoryAlerts} />
-            </Card>
+            <EmptyMetricCard
+              label="Inventory alerts"
+              message="Connect a store to see stock alerts."
+              ctaText="Connect a store"
+              ctaHref={storeSettingsHref}
+              variant="list"
+            />
           </section>
 
           {/* ─── Store leaderboard ────────────────────────────────────── */}
           <section>
-            <Card>
-              <CardHeader
-                title="Stores"
-                subtitle="Performance across every connected store"
-                icon={<BarChart3 className="w-4 h-4 text-indigo-600" />}
-              />
-              <StoreTable rows={storeLeaderboard} />
-            </Card>
+            <EmptyMetricCard
+              label="Stores"
+              message="Connect stores to compare performance."
+              ctaText="Connect a store"
+              ctaHref={storeSettingsHref}
+              variant="list"
+            />
           </section>
 
           {/* ─── Agents + Customer signals ────────────────────────────── */}
@@ -337,83 +351,6 @@ function Sparkline({ data, positive }: { data: number[]; positive: boolean }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   Revenue area chart
-   ──────────────────────────────────────────────────────────────────────── */
-
-function RevenueAreaChart({ data }: { data: DashData['revenueSeries'] }) {
-  const w = 720, h = 200, pad = { l: 40, r: 12, t: 12, b: 24 }
-  const innerW = w - pad.l - pad.r
-  const innerH = h - pad.t - pad.b
-  const values = data.map(d => d.revenue)
-  const max = Math.max(...values)
-  const min = 0
-  const span = max - min
-
-  const x = (i: number) => pad.l + (i / (data.length - 1)) * innerW
-  const y = (v: number) => pad.t + innerH - ((v - min) / span) * innerH
-
-  const linePts = data.map((d, i) => `${x(i)},${y(d.revenue)}`).join(' ')
-  const areaPts = `${pad.l},${pad.t + innerH} ${linePts} ${pad.l + innerW},${pad.t + innerH}`
-
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(t => min + t * span)
-
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-[200px]">
-      <defs>
-        <linearGradient id="revArea" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25" />
-          <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-
-      {/* Y grid */}
-      {yTicks.map((tv, i) => {
-        const yy = y(tv)
-        return (
-          <g key={i}>
-            <line x1={pad.l} x2={pad.l + innerW} y1={yy} y2={yy} stroke="#f3f4f6" strokeWidth="1" />
-            <text x={pad.l - 8} y={yy + 3} textAnchor="end" fontSize="10" fill="#9ca3af">
-              {tv >= 1000 ? `${Math.round(tv / 1000)}k` : Math.round(tv)}
-            </text>
-          </g>
-        )
-      })}
-
-      {/* X labels (every 2nd day) */}
-      {data.map((d, i) => {
-        if (i % 2 !== 0) return null
-        const day = d.date.slice(-2)
-        return (
-          <text
-            key={d.date}
-            x={x(i)}
-            y={h - 6}
-            textAnchor="middle"
-            fontSize="10"
-            fill="#9ca3af"
-          >
-            {day}
-          </text>
-        )
-      })}
-
-      <polygon points={areaPts} fill="url(#revArea)" />
-      <polyline
-        points={linePts}
-        fill="none"
-        stroke="#6366f1"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {data.map((d, i) => (
-        <circle key={d.date} cx={x(i)} cy={y(d.revenue)} r={i === data.length - 1 ? 3.5 : 0} fill="#6366f1" />
-      ))}
-    </svg>
-  )
-}
-
-/* ────────────────────────────────────────────────────────────────────────
    Channel mix
    ──────────────────────────────────────────────────────────────────────── */
 
@@ -508,142 +445,6 @@ function TopicList({ topics }: { topics: DashData['topTopics'] }) {
   )
 }
 
-/* ────────────────────────────────────────────────────────────────────────
-   Best sellers table
-   ──────────────────────────────────────────────────────────────────────── */
-
-function BestSellersTable({ rows }: { rows: DashData['bestSellers'] }) {
-  return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="text-xs text-gray-400 uppercase tracking-wider">
-          <th className="text-left font-medium py-2">Product</th>
-          <th className="text-left font-medium py-2">Channel</th>
-          <th className="text-right font-medium py-2">Units</th>
-          <th className="text-right font-medium py-2">Revenue</th>
-          <th className="text-right font-medium py-2">Stock</th>
-          <th className="text-right font-medium py-2 w-24">7d trend</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(p => (
-          <tr key={p.id} className="border-t border-gray-100">
-            <td className="py-3 text-gray-900 font-medium">{p.name}</td>
-            <td className="py-3">
-              <ChannelBadge channel={p.channel} showLabel />
-            </td>
-            <td className="py-3 text-right tabular-nums text-gray-900">{p.unitsSold}</td>
-            <td className="py-3 text-right tabular-nums text-gray-900 font-medium">
-              S${p.revenue.toLocaleString()}
-            </td>
-            <td className="py-3 text-right">
-              <span className={cn(
-                'tabular-nums text-xs px-2 py-0.5 rounded-md font-medium',
-                p.stock === 0 ? 'bg-rose-50 text-rose-700' :
-                p.stock < 15 ? 'bg-amber-50 text-amber-700' :
-                'bg-gray-50 text-gray-600'
-              )}>
-                {p.stock}
-              </span>
-            </td>
-            <td className="py-3 w-24">
-              <Sparkline data={p.trend} positive={p.trend[p.trend.length - 1] >= p.trend[0]} />
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
-/* ────────────────────────────────────────────────────────────────────────
-   Inventory alerts
-   ──────────────────────────────────────────────────────────────────────── */
-
-function InventoryAlertList({ alerts }: { alerts: DashData['inventoryAlerts'] }) {
-  return (
-    <ul className="space-y-2.5">
-      {alerts.map(a => (
-        <li key={a.id} className="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0">
-          <div className={cn(
-            'w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0',
-            a.status === 'out' ? 'bg-rose-50' : 'bg-amber-50'
-          )}>
-            <AlertTriangle className={cn(
-              'w-3.5 h-3.5',
-              a.status === 'out' ? 'text-rose-600' : 'text-amber-600'
-            )} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{a.product}</p>
-            <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
-              <ChannelBadge channel={a.channel} />
-              <span>·</span>
-              <span>{a.store}</span>
-            </p>
-          </div>
-          <div className="text-right flex-shrink-0">
-            <p className={cn(
-              'text-sm font-semibold tabular-nums',
-              a.status === 'out' ? 'text-rose-600' : 'text-amber-600'
-            )}>
-              {a.status === 'out' ? 'OUT' : `${a.stock} left`}
-            </p>
-            <p className="text-xs text-gray-400 mt-0.5 tabular-nums">
-              {a.status === 'out' ? 'Restock now' : `${a.daysOfCover}d cover`}
-            </p>
-          </div>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-/* ────────────────────────────────────────────────────────────────────────
-   Store leaderboard table
-   ──────────────────────────────────────────────────────────────────────── */
-
-function StoreTable({ rows }: { rows: DashData['storeLeaderboard'] }) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-xs text-gray-400 uppercase tracking-wider">
-            <th className="text-left font-medium py-2">Store</th>
-            <th className="text-left font-medium py-2">Channel</th>
-            <th className="text-right font-medium py-2">Revenue</th>
-            <th className="text-right font-medium py-2">Orders</th>
-            <th className="text-right font-medium py-2">Conversations</th>
-            <th className="text-right font-medium py-2">AI handled</th>
-            <th className="text-right font-medium py-2">Avg response</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(s => (
-            <tr key={s.id} className="border-t border-gray-100">
-              <td className="py-3 text-gray-900 font-medium">{s.name}</td>
-              <td className="py-3">
-                <ChannelBadge channel={s.channel} showLabel />
-              </td>
-              <td className="py-3 text-right tabular-nums font-medium text-gray-900">
-                S${s.revenue.toLocaleString()}
-              </td>
-              <td className="py-3 text-right tabular-nums text-gray-700">{s.orders}</td>
-              <td className="py-3 text-right tabular-nums text-gray-700">{s.conversations}</td>
-              <td className="py-3 text-right">
-                <ProgressPill value={s.aiHandledPct} />
-              </td>
-              <td className="py-3 text-right tabular-nums text-gray-700">
-                {s.avgFirstResponseMin.toFixed(1)}m
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
 function ProgressPill({ value }: { value: number }) {
   return (
     <div className="inline-flex items-center gap-2">
@@ -673,7 +474,6 @@ function AgentTable({ rows }: { rows: DashData['agentRows'] }) {
           <th className="text-right font-medium py-2">Handled</th>
           <th className="text-right font-medium py-2">AI assist</th>
           <th className="text-right font-medium py-2">Avg response</th>
-          <th className="text-right font-medium py-2">CSAT</th>
         </tr>
       </thead>
       <tbody>
@@ -692,7 +492,6 @@ function AgentTable({ rows }: { rows: DashData['agentRows'] }) {
               <ProgressPill value={a.aiAssistPct} />
             </td>
             <td className="py-3 text-right tabular-nums text-gray-700">{a.avgResponseMin.toFixed(1)}m</td>
-            <td className="py-3 text-right tabular-nums text-gray-900 font-medium">{a.csat.toFixed(1)}</td>
           </tr>
         ))}
       </tbody>

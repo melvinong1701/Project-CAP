@@ -39,7 +39,7 @@ Target market: Singapore + Malaysia first. Language support required from Day 1:
 | Database | PostgreSQL via Supabase |
 | Cache / Queue | Redis via Upstash |
 | AI | OpenAI API with two-queue model routing |
-| Auth | NextAuth.js |
+| Auth | Supabase Auth (`@supabase/ssr`) — RBAC via `user_profiles.role` (`owner` / `agent`); org context via `lib/getOrgId.ts` |
 | File storage | Cloudflare R2 |
 | Deploy | Vercel (frontend) + Railway (workers) |
 
@@ -52,7 +52,7 @@ Do not introduce new libraries or infrastructure without flagging it in your tas
 ```
 Frontend (Next.js + Tailwind + shadcn/ui)
    ↓
-API Gateway (Next.js API Routes + NextAuth)
+API Gateway (Next.js API Routes + Supabase Auth)
    ↓
 ┌─────────────┬────────────┬──────────────────┐
 │ Platform    │ AI         │ Business         │
@@ -71,10 +71,14 @@ Background workers (polling, webhooks, AI queue)
 
 ## Current state
 
-- Demo exists, wired to **Telegram only** (Shopee/Lazada/TikTok Shop API access pending)
-- UI is being built against **mock data** — no real platform connections required in the current phase
+- Inbox is live against Supabase (`conversations`, `messages`, `customers`, `stores`, `store_platforms`, `user_profiles`, `organizations`)
+- Auth + RBAC live — Supabase Auth, `owner` / `agent` roles enforced in `lib/getOrgId.ts`
+- Telegram adapter complete: webhook → message persistence, outbound send, per-store connect/disconnect
+- Shopify adapter Phase 1: OAuth install/callback + `orders/create` webhook. Phase 2 (replies, catalogue sync) not built
+- AI suggestion loop live: Queue 1 (`gpt-5.4-nano` preprocessing, cached on conversation row) + Queue 2 (`gpt-5.4-mini` reply or `gpt-5.4` escalation)
+- Customer identity-resolution live: per-store dedupe, merge suggestions, manual merge
+- Shopee / Lazada / TikTok Shop chat-API access still pending (per-seller developer-app workaround needed for Shopee + Lazada)
 - Supabase project ID: `eoyolzalpwjakjdgdgck`
-- Auth is not yet wired — hardcode a test org UUID consistently across all mock data
 
 ---
 
@@ -90,25 +94,44 @@ The UI is channel-agnostic. It receives a normalised message object regardless o
 
 Normalised types (source of truth): `lib/types.ts` — `Conversation`, `Message`, `AiSuggestion`, `Channel`.
 
-**Canonical message shape — do not deviate:**
+**Canonical message shape — `lib/types.ts` is the source of truth.** Keep that file in sync when adding adapters. Current shape:
 ```ts
-{
+// Channel union (see lib/types.ts for live list)
+type Channel =
+  | 'telegram'
+  | 'shopify'
+  | 'shopee'
+  | 'lazada'
+  | 'tiktok_shop'
+  | 'whatsapp'
+  | 'facebook_messenger'
+  | 'instagram'
+
+interface Conversation {
   id: string
   organizationId: string
-  channel: 'telegram' | 'shopee' | 'lazada' | 'tiktok_shop' | 'whatsapp'
+  channel: Channel
   externalId: string
   sender: { name: string; avatarUrl?: string }
   content: string
   timestamp: Date
   isRead: boolean
-  aiSuggestion?: {
-    text: string
-    confidence: 'high' | 'medium' | 'low'
-    autoSent: boolean
-  }
+  aiSuggestion?: AiSuggestion
   tags?: string[]
   assignedTo?: string
 }
+
+// AiSuggestion is a discriminated union — success or error
+type AiSuggestion =
+  | {
+      text: string
+      confidence: 'high' | 'medium' | 'low'
+      autoSent: boolean
+      dismissed: boolean
+      reasoning?: string
+      sourceCited?: string | null
+    }
+  | { error: string; dismissed: false }
 ```
 
 ---
@@ -157,7 +180,7 @@ Use shadcn/ui for: Button, Input, Textarea, Badge, Avatar, Separator, Tooltip, D
 
 ---
 
-## Mock data spec (current phase)
+## Mock data spec (archived — no longer the current phase)
 
 Seed with:
 - 2 mock stores (e.g. "TechGear SG" and "HomeDecor MY", both on Telegram for now)
@@ -176,7 +199,6 @@ Seed with:
 - ❌ Custom AI model training UI
 - ❌ Mobile native app (PWA is enough)
 - ❌ White-label / reseller program
-- ❌ Meta / Facebook / Instagram channel integrations
 - ❌ Telegram-specific logic in any UI component
 - ❌ New infrastructure not in the approved stack
 
@@ -187,8 +209,8 @@ If a task spec asks for anything in this list, flag it before building.
 ## Code standards
 
 - TypeScript everywhere — no implicit `any`
-- All components in `src/components/`, pages in `src/app/`
-- Co-locate component-specific types in the component file; shared types in `src/types/`
+- Components in `components/`, pages in `app/` (no `src/` directory)
+- Co-locate component-specific types in the component file; shared types in `lib/types.ts`
 - Tailwind for all styling — no inline styles, no CSS modules unless unavoidable
 - API routes return consistent shape: `{ data, error, meta }`
 - Never log secrets, tokens, or PII — sanitise before Sentry
