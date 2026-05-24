@@ -193,7 +193,7 @@ Seed with:
 ## What NOT to build (scope traps)
 
 - ❌ Chatbot / flow builder (that's Manychat)
-- ❌ CRM beyond basic customer profile
+- ❌ CRM beyond customer profile + cross-channel identity resolution (no deal pipelines, no lifecycle stages, no sales-team CRM features)
 - ❌ Helpdesk / ticketing system
 - ❌ Marketing automation / broadcast messaging
 - ❌ Custom AI model training UI

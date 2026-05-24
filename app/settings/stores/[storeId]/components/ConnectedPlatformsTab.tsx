@@ -7,7 +7,9 @@ import {
   Check,
   ChevronDown,
   Loader2,
+  Package,
   Plug,
+  RefreshCw,
   X,
 } from 'lucide-react'
 import { PLATFORMS, PlatformDef } from '@/lib/platformRegistry'
@@ -29,6 +31,180 @@ interface ConnectedPlatformsTabProps {
 type PlatformWithConnection = {
   platform: PlatformDef
   connection: StorePlatformRow | null
+}
+
+type ProductSyncStatus = 'never' | 'in_progress' | 'success' | 'failed'
+
+interface ProductSyncState {
+  lastSyncedAt: string | null
+  productCount: number
+  lastSyncStatus: ProductSyncStatus
+  lastSyncError: string | null
+}
+
+async function fetchProductSyncState(storeId: string): Promise<ProductSyncState> {
+  const res = await fetch(`/api/shopify/sync-state?storeId=${encodeURIComponent(storeId)}`)
+  const json = await res.json() as { data?: ProductSyncState; error?: string }
+
+  if (!res.ok || !json.data) {
+    throw new Error(json.error ?? 'Failed to load product catalogue status')
+  }
+
+  return json.data
+}
+
+function formatRelativeTime(value: string | null) {
+  if (!value) return 'never'
+
+  const date = new Date(value)
+  const diffMs = date.getTime() - Date.now()
+  if (Number.isNaN(diffMs)) return 'unknown'
+
+  const units: { unit: Intl.RelativeTimeFormatUnit; ms: number }[] = [
+    { unit: 'day', ms: 24 * 60 * 60 * 1000 },
+    { unit: 'hour', ms: 60 * 60 * 1000 },
+    { unit: 'minute', ms: 60 * 1000 },
+  ]
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+  const match = units.find(item => Math.abs(diffMs) >= item.ms)
+
+  if (!match) return 'just now'
+
+  return rtf.format(Math.round(diffMs / match.ms), match.unit)
+}
+
+function ProductCataloguePanel({ storeId }: { storeId: string }) {
+  const [syncState, setSyncState] = useState<ProductSyncState | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSyncState() {
+      setLoading(true)
+      setError(null)
+
+      try {
+        const state = await fetchProductSyncState(storeId)
+        if (!cancelled) setSyncState(state)
+      } catch {
+        if (!cancelled) setError('Could not load product catalogue status.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    loadSyncState()
+
+    return () => {
+      cancelled = true
+    }
+  }, [storeId])
+
+  useEffect(() => {
+    if (!toast) return undefined
+
+    const timeoutId = window.setTimeout(() => setToast(null), 3500)
+    return () => window.clearTimeout(timeoutId)
+  }, [toast])
+
+  const handleSyncNow = async () => {
+    setSyncing(true)
+    setError(null)
+
+    try {
+      const res = await fetch(`/api/shopify/sync-products?storeId=${encodeURIComponent(storeId)}`, {
+        method: 'POST',
+      })
+      const json = await res.json() as { error?: string }
+
+      if (!res.ok) {
+        throw new Error(json.error ?? 'Product sync failed')
+      }
+
+      const state = await fetchProductSyncState(storeId)
+      setSyncState(state)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Product sync failed'
+      setToast(message)
+      setError(message)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const productCount = syncState?.productCount ?? 0
+  const lastSynced = formatRelativeTime(syncState?.lastSyncedAt ?? null)
+  const status = syncState?.lastSyncStatus ?? 'never'
+  const isSyncInFlight = syncing || status === 'in_progress'
+
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-green-50">
+            <Package className="h-5 w-5 text-green-600" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-gray-900">Product catalogue</p>
+              {status === 'failed' && (
+                <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600">
+                  Failed
+                </span>
+              )}
+              {status === 'in_progress' && (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                  Syncing
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-sm text-gray-500">
+              {loading ? 'Loading catalogue status...' : `${productCount.toLocaleString()} products • Last synced ${lastSynced}`}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSyncNow}
+          disabled={loading || isSyncInFlight}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400"
+        >
+          {isSyncInFlight ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          {isSyncInFlight ? 'Syncing...' : 'Sync now'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {syncState?.lastSyncStatus === 'failed' && syncState.lastSyncError && !error && (
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          {syncState.lastSyncError}
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-5 right-5 z-50 flex max-w-sm items-center gap-2 rounded-xl border border-red-100 bg-white px-4 py-3 text-sm font-medium text-red-700 shadow-lg">
+          <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          {toast}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function StatusBadge({ connected }: { connected: boolean }) {
@@ -407,6 +583,7 @@ export default function ConnectedPlatformsTab({ storeId }: ConnectedPlatformsTab
   )
 
   const selectedItem = platformItems.find(item => item.platform.id === selectedPlatformId) ?? null
+  const hasShopifyConnection = connections.some(connection => connection.platform_id === 'shopify')
 
   const showConnectPlaceholder = () => {
     setNotice('OAuth coming soon. Contact Project CAP support to connect this platform manually for now.')
@@ -463,6 +640,10 @@ export default function ConnectedPlatformsTab({ storeId }: ConnectedPlatformsTab
           <Plug className="h-4 w-4 flex-shrink-0" />
           {notice}
         </div>
+      )}
+
+      {hasShopifyConnection && (
+        <ProductCataloguePanel storeId={storeId} />
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

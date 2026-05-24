@@ -156,6 +156,7 @@ export async function DELETE(request: NextRequest) {
       'customer_orders',
       'customer_merges',
       'customer_merge_suggestions',
+      'store_product_sync_state',
       'store_products',
       'messages',
       'conversations',

@@ -43,6 +43,80 @@ function verifyHmac(query: URLSearchParams, secret: string): boolean {
   }
 }
 
+const WEBHOOK_SUBSCRIPTION_CREATE_MUTATION = `
+  mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $webhookSubscription: WebhookSubscriptionInput!) {
+    webhookSubscriptionCreate(topic: $topic, webhookSubscription: $webhookSubscription) {
+      webhookSubscription {
+        id
+        topic
+        uri
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`
+
+const SHOPIFY_WEBHOOK_TOPICS = [
+  'ORDERS_CREATE',
+  'PRODUCTS_CREATE',
+  'PRODUCTS_UPDATE',
+  'PRODUCTS_DELETE',
+] as const
+
+type ShopifyWebhookTopic = typeof SHOPIFY_WEBHOOK_TOPICS[number]
+
+async function registerShopifyWebhook(params: {
+  shop: string
+  accessToken: string
+  topic: ShopifyWebhookTopic
+  webhookUrl: string
+}) {
+  try {
+    const webhookRes = await fetch(`https://${params.shop}/admin/api/2026-04/graphql.json`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': params.accessToken,
+      },
+      body: JSON.stringify({
+        query: WEBHOOK_SUBSCRIPTION_CREATE_MUTATION,
+        variables: {
+          topic: params.topic,
+          webhookSubscription: {
+            uri: params.webhookUrl,
+          },
+        },
+      }),
+    })
+
+    const webhookData = await webhookRes.json() as {
+      data?: {
+        webhookSubscriptionCreate?: {
+          userErrors: { field?: string[]; message: string }[]
+        }
+      }
+    }
+    const userErrors = webhookData.data?.webhookSubscriptionCreate?.userErrors ?? []
+
+    if (!webhookRes.ok || userErrors.length > 0) {
+      console.error('Shopify webhook registration failed:', JSON.stringify({
+        topic: params.topic,
+        status: webhookRes.status,
+        userErrors,
+        rawData: webhookData,
+      }))
+    }
+  } catch (err) {
+    console.error('Shopify webhook registration failed:', {
+      topic: params.topic,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
@@ -123,59 +197,27 @@ export async function GET(req: NextRequest) {
     }
 
     const webhookUrl = `${appUrl}/api/shopify/webhook?storeId=${encodeURIComponent(storeId)}`
-    const webhookRes = await fetch(`https://${shop}/admin/api/2026-04/graphql.json`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': tokenData.access_token,
-      },
-      body: JSON.stringify({
-        query: `
-        mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $webhookSubscription: WebhookSubscriptionInput!) {
-          webhookSubscriptionCreate(topic: $topic, webhookSubscription: $webhookSubscription) {
-            webhookSubscription {
-              id
-              topic
-              uri
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }
-      `,
-        variables: {
-          topic: 'ORDERS_CREATE',
-          webhookSubscription: {
-            uri: webhookUrl,
-          },
-        },
-      }),
-    })
-    const webhookData = await webhookRes.json() as {
-      data?: {
-        webhookSubscriptionCreate?: {
-          userErrors: { field?: string[]; message: string }[]
-        }
-      }
-    }
-    const userErrors = webhookData.data?.webhookSubscriptionCreate?.userErrors ?? []
-
-    if (!webhookRes.ok || userErrors.length > 0) {
-      console.error('Shopify webhook registration failed:', JSON.stringify({
-        status: webhookRes.status,
-        userErrors,
-        rawData: webhookData,
-      }))
-      const response = NextResponse.redirect(`${appUrl}/?shopify_warning=webhook_failed`)
-      response.cookies.set('shopify_oauth_state', '', { maxAge: 0, path: '/' })
-      return response
+    for (const topic of SHOPIFY_WEBHOOK_TOPICS) {
+      await registerShopifyWebhook({
+        shop,
+        accessToken: tokenData.access_token,
+        topic,
+        webhookUrl,
+      })
     }
 
+    const cookieHeader = req.headers.get('cookie')
     fetch(`${appUrl}/api/shopify/sync-products?storeId=${encodeURIComponent(storeId)}`, {
       method: 'POST',
-    }).catch(err => console.error('Product sync trigger failed:', err))
+      headers: cookieHeader ? { Cookie: cookieHeader } : undefined,
+      redirect: 'manual',
+    })
+      .then(res => {
+        if (!res.ok) {
+          console.error('Product sync trigger failed:', { status: res.status })
+        }
+      })
+      .catch(err => console.error('Product sync trigger failed:', err))
 
     const response = NextResponse.redirect(`${appUrl}/`)
     response.cookies.set('shopify_oauth_state', '', { maxAge: 0, path: '/' })

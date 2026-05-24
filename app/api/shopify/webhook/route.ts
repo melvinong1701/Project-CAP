@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
+import {
+  ShopifyWebhookProduct,
+  deleteProduct,
+  shopifyProductGid,
+  shopifyWebhookProductToRow,
+  upsertProduct,
+} from '@/lib/shopifyProductSync'
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -50,6 +57,10 @@ interface StorePlatformOrgRow {
   organization_id: string
 }
 
+interface ShopifyProductDeleteWebhook {
+  id: number | string
+}
+
 export async function POST(req: NextRequest) {
   try {
     const rawBody = Buffer.from(await req.arrayBuffer())
@@ -95,10 +106,132 @@ export async function POST(req: NextRequest) {
       await handleOrderCreate({ order, storeId, organizationId: platformRow.organization_id })
     }
 
+    if (topic === 'products/create' || topic === 'products/update') {
+      const product = JSON.parse(rawBody.toString()) as ShopifyWebhookProduct
+      await handleProductUpsert({
+        product,
+        storeId,
+        organizationId: platformRow.organization_id,
+        supabase,
+      })
+    }
+
+    if (topic === 'products/delete') {
+      const product = JSON.parse(rawBody.toString()) as ShopifyProductDeleteWebhook
+      await handleProductDelete({
+        product,
+        storeId,
+        organizationId: platformRow.organization_id,
+        supabase,
+      })
+    }
+
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('Shopify webhook error:', err)
     return NextResponse.json({ ok: false }, { status: 500 })
+  }
+}
+
+async function handleProductUpsert(params: {
+  product: ShopifyWebhookProduct
+  storeId: string
+  organizationId: string
+  supabase: ReturnType<typeof getSupabase>
+}) {
+  const row = shopifyWebhookProductToRow(params.product, params.organizationId, params.storeId)
+  const error = await upsertProduct(params.supabase, row)
+
+  if (error) {
+    console.error('Failed to upsert Shopify product:', error)
+    return
+  }
+
+  await updateProductSyncCount({
+    supabase: params.supabase,
+    organizationId: params.organizationId,
+    storeId: params.storeId,
+  })
+}
+
+async function handleProductDelete(params: {
+  product: ShopifyProductDeleteWebhook
+  storeId: string
+  organizationId: string
+  supabase: ReturnType<typeof getSupabase>
+}) {
+  const error = await deleteProduct(params.supabase, {
+    organizationId: params.organizationId,
+    storeId: params.storeId,
+    externalProductId: shopifyProductGid(params.product.id),
+  })
+
+  if (error) {
+    console.error('Failed to delete Shopify product:', error)
+    return
+  }
+
+  await updateProductSyncCount({
+    supabase: params.supabase,
+    organizationId: params.organizationId,
+    storeId: params.storeId,
+  })
+}
+
+async function updateProductSyncCount(params: {
+  supabase: ReturnType<typeof getSupabase>
+  organizationId: string
+  storeId: string
+}) {
+  const { count, error: countError } = await params.supabase
+    .from('store_products')
+    .select('id', { count: 'exact', head: true })
+    .eq('organization_id', params.organizationId)
+    .eq('store_id', params.storeId)
+    .eq('platform_id', 'shopify')
+
+  if (countError) {
+    console.error('Failed to count Shopify products:', countError)
+    return
+  }
+
+  const now = new Date().toISOString()
+  const { data, error } = await params.supabase
+    .from('store_product_sync_state')
+    .update({
+      product_count: count ?? 0,
+      last_synced_at: now,
+      updated_at: now,
+    })
+    .eq('organization_id', params.organizationId)
+    .eq('store_id', params.storeId)
+    .eq('platform_id', 'shopify')
+    .select('store_id')
+    .returns<{ store_id: string }[]>()
+
+  if (error) {
+    console.error('Failed to update Shopify product sync state:', error)
+    return
+  }
+
+  if ((data ?? []).length > 0) {
+    return
+  }
+
+  const { error: insertError } = await params.supabase
+    .from('store_product_sync_state')
+    .insert({
+      organization_id: params.organizationId,
+      store_id: params.storeId,
+      platform_id: 'shopify',
+      product_count: count ?? 0,
+      last_synced_at: now,
+      last_sync_status: 'never',
+      updated_at: now,
+    })
+
+  if (insertError) {
+    console.error('Failed to insert Shopify product sync state:', insertError)
   }
 }
 
