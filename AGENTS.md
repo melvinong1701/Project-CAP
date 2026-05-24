@@ -170,7 +170,8 @@ Seed with:
 ## What NOT to build (scope traps)
 
 - ❌ Chatbot / flow builder (that's Manychat)
-- ❌ CRM beyond basic customer profile
+- ❌ Marketing-side CRM: loyalty programs, segmentation, lifetime-value scoring, RFM analysis, customer tagging beyond inbox use
+- ✅ In scope: customer identity-resolution (cross-channel buyer matching, merge suggestions, manual merge) — it's part of the unified inbox, not marketing CRM
 - ❌ Helpdesk / ticketing system
 - ❌ Marketing automation / broadcast messaging
 - ❌ Custom AI model training UI
