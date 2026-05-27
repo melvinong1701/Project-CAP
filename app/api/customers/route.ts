@@ -3,7 +3,10 @@ import {
   compactSearchTerm,
   customerSelect,
   getSupabaseAdmin,
+  getChannels,
+  isCustomerChannel,
   mapCustomerSummary,
+  type CustomerChannel,
   type CustomerRow,
   type MergeSuggestionRow,
 } from './_utils'
@@ -72,14 +75,15 @@ export async function GET(req: NextRequest) {
 
     const customerIds = (customers ?? []).map(customer => customer.id)
     const conversationCounts = new Map<string, number>()
+    const conversationChannels = new Map<string, Set<CustomerChannel>>()
 
     if (customerIds.length > 0) {
       const { data: conversations, error: conversationsError } = await supabase
         .from('conversations')
-        .select('customer_id')
+        .select('customer_id, channel')
         .eq('organization_id', ORG_ID)
         .in('customer_id', customerIds)
-        .returns<{ customer_id: string | null }[]>()
+        .returns<{ customer_id: string | null; channel: string | null }[]>()
 
       if (conversationsError) {
         console.error('Customers conversation count error:', conversationsError)
@@ -89,6 +93,11 @@ export async function GET(req: NextRequest) {
       ;(conversations ?? []).forEach(row => {
         if (!row.customer_id) return
         conversationCounts.set(row.customer_id, (conversationCounts.get(row.customer_id) ?? 0) + 1)
+        if (isCustomerChannel(row.channel)) {
+          const channels = conversationChannels.get(row.customer_id) ?? new Set<CustomerChannel>()
+          channels.add(row.channel)
+          conversationChannels.set(row.customer_id, channels)
+        }
       })
     }
 
@@ -112,6 +121,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       data: (customers ?? []).map(customer => mapCustomerSummary(customer, {
+        channels: getChannels(customer, Array.from(conversationChannels.get(customer.id) ?? [])),
         conversationCount: conversationCounts.get(customer.id) ?? 0,
         hasPendingMergeSuggestion: pendingProfiles.has(customer.id),
       })),

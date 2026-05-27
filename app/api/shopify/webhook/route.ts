@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 import {
   ShopifyWebhookProduct,
@@ -8,6 +8,7 @@ import {
   shopifyWebhookProductToRow,
   upsertProduct,
 } from '@/lib/shopifyProductSync'
+import { resolveCustomerIdentity } from '@/lib/identity-resolution'
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -32,6 +33,7 @@ interface ShopifyCustomer {
   first_name?: string
   last_name?: string
   email?: string
+  phone?: string
 }
 
 interface ShopifyLineItem {
@@ -51,6 +53,13 @@ interface ShopifyOrder {
 
 interface ConversationRow {
   id: string
+}
+
+interface CustomerRow {
+  id: string
+  display_name: string | null
+  phone: string | null
+  last_contact_at: string | null
 }
 
 interface StorePlatformOrgRow {
@@ -286,4 +295,225 @@ async function handleOrderCreate(params: { order: ShopifyOrder; storeId: string;
   if (msgErr) {
     console.error('Failed to insert Shopify message:', msgErr)
   }
+
+  const email = order.customer?.email?.trim() || null
+  const rawPhone = order.customer?.phone?.trim() || null
+  const phone = rawPhone ? rawPhone.replace(/[\s\-().]/g, '') : null
+  const customerId = await upsertShopifyCustomer({
+    supabase,
+    organizationId,
+    customerName,
+    email,
+    phone,
+    lastContactAt: order.created_at,
+  })
+
+  const { error: linkError } = await supabase
+    .from('conversations')
+    .update({ customer_id: customerId })
+    .eq('id', conv.id)
+    .eq('organization_id', organizationId)
+
+  if (linkError) {
+    throw new Error('Failed to link Shopify conversation to customer')
+  }
+
+  try {
+    await resolveCustomerIdentity({
+      supabase,
+      organizationId,
+      customerId,
+      conversationId: conv.id,
+      storeId,
+      lastContactAt: order.created_at,
+    })
+  } catch (err) {
+    console.error('Shopify customer identity resolution failed:', err)
+  }
+}
+
+async function upsertShopifyCustomer(params: {
+  supabase: SupabaseClient
+  organizationId: string
+  customerName: string
+  email: string | null
+  phone: string | null
+  lastContactAt: string
+}): Promise<string> {
+  const { supabase, organizationId, customerName, email, phone, lastContactAt } = params
+
+  if (email) {
+    const existing = await findShopifyCustomerByEmail(supabase, organizationId, email)
+    if (existing) {
+      return updateExistingShopifyCustomer({
+        supabase,
+        organizationId,
+        customer: existing,
+        customerName,
+        phone,
+        lastContactAt,
+      })
+    }
+  }
+
+  const insertPayload = {
+    organization_id: organizationId,
+    display_name: customerName,
+    email,
+    phone,
+    last_contact_at: lastContactAt,
+  }
+
+  const { data, error } = await supabase
+    .from('customers')
+    .insert(insertPayload)
+    .select('id')
+    .single<{ id: string }>()
+
+  if (!error && data) {
+    return data.id
+  }
+
+  if (!isUniqueViolation(error)) {
+    throw new Error('Failed to create Shopify customer profile')
+  }
+
+  const conflictedCustomer = email
+    ? await findShopifyCustomerByEmail(supabase, organizationId, email)
+    : phone
+      ? await findShopifyCustomerByPhone(supabase, organizationId, phone)
+      : null
+
+  if (!conflictedCustomer && phone) {
+    const phoneCustomer = await findShopifyCustomerByPhone(supabase, organizationId, phone)
+    if (phoneCustomer) {
+      return updateExistingShopifyCustomer({
+        supabase,
+        organizationId,
+        customer: phoneCustomer,
+        customerName,
+        phone,
+        lastContactAt,
+      })
+    }
+  }
+
+  if (!conflictedCustomer) {
+    throw new Error('Failed to recover Shopify customer profile after unique conflict')
+  }
+
+  return updateExistingShopifyCustomer({
+    supabase,
+    organizationId,
+    customer: conflictedCustomer,
+    customerName,
+    phone,
+    lastContactAt,
+  })
+}
+
+async function findShopifyCustomerByEmail(
+  supabase: SupabaseClient,
+  organizationId: string,
+  email: string
+): Promise<CustomerRow | null> {
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id, display_name, phone, last_contact_at')
+    .eq('organization_id', organizationId)
+    .eq('email', email)
+    .limit(1)
+    .maybeSingle<CustomerRow>()
+
+  if (error) {
+    throw new Error('Failed to find Shopify customer by email')
+  }
+
+  return data
+}
+
+async function findShopifyCustomerByPhone(
+  supabase: SupabaseClient,
+  organizationId: string,
+  phone: string
+): Promise<CustomerRow | null> {
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id, display_name, phone, last_contact_at')
+    .eq('organization_id', organizationId)
+    .eq('phone', phone)
+    .limit(1)
+    .maybeSingle<CustomerRow>()
+
+  if (error) {
+    throw new Error('Failed to find Shopify customer by phone')
+  }
+
+  return data
+}
+
+async function updateExistingShopifyCustomer(params: {
+  supabase: SupabaseClient
+  organizationId: string
+  customer: CustomerRow
+  customerName: string
+  phone: string | null
+  lastContactAt: string
+}): Promise<string> {
+  const { supabase, organizationId, customer, customerName, phone, lastContactAt } = params
+  const patch: { display_name?: string; phone?: string; last_contact_at?: string } = {}
+
+  if (!customer.display_name) {
+    patch.display_name = customerName
+  }
+
+  if (!customer.phone && phone) {
+    patch.phone = phone
+  }
+
+  if (isLaterTimestamp(lastContactAt, customer.last_contact_at)) {
+    patch.last_contact_at = lastContactAt
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return customer.id
+  }
+
+  const { error } = await supabase
+    .from('customers')
+    .update(patch)
+    .eq('id', customer.id)
+    .eq('organization_id', organizationId)
+
+  if (!error) {
+    return customer.id
+  }
+
+  if (patch.phone && isUniqueViolation(error)) {
+    delete patch.phone
+    if (Object.keys(patch).length === 0) {
+      return customer.id
+    }
+
+    const { error: retryError } = await supabase
+      .from('customers')
+      .update(patch)
+      .eq('id', customer.id)
+      .eq('organization_id', organizationId)
+
+    if (!retryError) {
+      return customer.id
+    }
+  }
+
+  throw new Error('Failed to update Shopify customer profile')
+}
+
+function isLaterTimestamp(candidate: string, current: string | null): boolean {
+  if (!current) return true
+  return new Date(candidate).getTime() > new Date(current).getTime()
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'code' in error && error.code === '23505')
 }

@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-export type CustomerChannel = 'telegram' | 'shopee' | 'lazada' | 'tiktok_shop'
+export type CustomerChannel = 'telegram' | 'shopify' | 'shopee' | 'lazada' | 'tiktok_shop'
 
 export interface CustomerRow {
   id: string
@@ -83,25 +83,35 @@ export function toNumber(value: number | string | null | undefined) {
   return 0
 }
 
-export function getChannels(customer: Pick<CustomerRow, 'telegram_id' | 'shopee_buyer_id' | 'lazada_buyer_id' | 'tiktok_buyer_id'>): CustomerChannel[] {
-  const channels: CustomerChannel[] = []
-  if (customer.telegram_id) channels.push('telegram')
-  if (customer.shopee_buyer_id) channels.push('shopee')
-  if (customer.lazada_buyer_id) channels.push('lazada')
-  if (customer.tiktok_buyer_id) channels.push('tiktok_shop')
-  return channels
+const customerChannelValues: CustomerChannel[] = ['telegram', 'shopify', 'shopee', 'lazada', 'tiktok_shop']
+
+export function isCustomerChannel(value: string | null | undefined): value is CustomerChannel {
+  return Boolean(value && customerChannelValues.includes(value as CustomerChannel))
+}
+
+export function getChannels(
+  customer: Pick<CustomerRow, 'telegram_id' | 'shopee_buyer_id' | 'lazada_buyer_id' | 'tiktok_buyer_id'>,
+  conversationChannels: CustomerChannel[] = []
+): CustomerChannel[] {
+  const channels = new Set<CustomerChannel>()
+  if (customer.telegram_id) channels.add('telegram')
+  if (customer.shopee_buyer_id) channels.add('shopee')
+  if (customer.lazada_buyer_id) channels.add('lazada')
+  if (customer.tiktok_buyer_id) channels.add('tiktok_shop')
+  conversationChannels.forEach(channel => channels.add(channel))
+  return Array.from(channels)
 }
 
 export function mapCustomerSummary(
   row: CustomerRow,
-  extras: { conversationCount?: number; hasPendingMergeSuggestion?: boolean } = {}
+  extras: { channels?: CustomerChannel[]; conversationCount?: number; hasPendingMergeSuggestion?: boolean } = {}
 ) {
   return {
     id: row.id,
     displayName: row.display_name,
     email: row.email,
     phone: row.phone,
-    channels: getChannels(row),
+    channels: extras.channels ?? getChannels(row),
     conversationCount: extras.conversationCount ?? 0,
     totalOrders: toNumber(row.total_orders),
     totalSpend: toNumber(row.total_spend),

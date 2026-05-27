@@ -9,8 +9,9 @@ import { Channel } from '@/lib/types'
 import { useStores } from '@/lib/useStores'
 import { cn } from '@/lib/utils'
 
-type CustomerChannel = 'telegram' | 'shopee' | 'lazada' | 'tiktok_shop'
-type FilterKey = 'all' | CustomerChannel | 'has_orders'
+type CustomerChannel = 'telegram' | 'shopify' | 'shopee' | 'lazada' | 'tiktok_shop'
+type FilterChannel = Exclude<CustomerChannel, 'shopify'>
+type FilterKey = 'all' | FilterChannel | 'has_orders'
 
 interface CustomerListItem {
   id: string
@@ -128,13 +129,20 @@ function formatDate(value: string | null) {
   }).format(new Date(value))
 }
 
-function customerChannels(customer: CustomerProfile): CustomerChannel[] {
-  const channels: CustomerChannel[] = []
-  if (customer.telegramId) channels.push('telegram')
-  if (customer.shopeeBuyerId) channels.push('shopee')
-  if (customer.lazadaBuyerId) channels.push('lazada')
-  if (customer.tiktokBuyerId) channels.push('tiktok_shop')
-  return channels
+function customerChannels(customer: CustomerProfile, conversations: CustomerConversation[] = []): CustomerChannel[] {
+  const channels = new Set<CustomerChannel>()
+  if (customer.telegramId) channels.add('telegram')
+  if (customer.shopeeBuyerId) channels.add('shopee')
+  if (customer.lazadaBuyerId) channels.add('lazada')
+  if (customer.tiktokBuyerId) channels.add('tiktok_shop')
+  conversations.forEach(conversation => {
+    if (isCustomerChannel(conversation.channel)) channels.add(conversation.channel)
+  })
+  return Array.from(channels)
+}
+
+function isCustomerChannel(value: string): value is CustomerChannel {
+  return ['telegram', 'shopify', 'shopee', 'lazada', 'tiktok_shop'].includes(value)
 }
 
 function displayName(name: string | null | undefined) {
@@ -506,7 +514,7 @@ function CustomerDetailPanel({
     })
   }, [detail.customer])
 
-  const channels = customerChannels(detail.customer)
+  const channels = customerChannels(detail.customer, detail.conversations)
 
   const saveProfile = async () => {
     setSaving(true)
@@ -545,7 +553,7 @@ function CustomerDetailPanel({
       displayName: payload.customer.displayName,
       email: payload.customer.email,
       phone: payload.customer.phone,
-      channels: customerChannels(payload.customer),
+      channels: customerChannels(payload.customer, payload.conversations),
       conversationCount: payload.conversations.length,
       totalOrders: payload.customer.totalOrders,
       totalSpend: payload.customer.totalSpend,
@@ -567,7 +575,7 @@ function CustomerDetailPanel({
               {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />}
             </div>
             <div className="mt-1 flex flex-wrap gap-1">
-              {channels.length > 0 ? channels.map(channel => <ChannelBadge key={channel} channel={channel as Channel} showLabel />) : <span className="text-xs text-gray-400">No channel IDs</span>}
+              {channels.length > 0 ? channels.map(channel => <ChannelBadge key={channel} channel={channel as Channel} showLabel />) : <span className="text-xs text-gray-400">No channels</span>}
             </div>
           </div>
         </div>
@@ -721,6 +729,7 @@ function CustomerDetailPanel({
       {mergeCandidate && (
         <MergeConfirmModal
           current={detail.customer}
+          currentChannels={channels}
           candidate={mergeCandidate}
           suggestionId={suggestionId}
           initialKeepId={preselectedKeepId}
@@ -872,6 +881,7 @@ function ManualMergeModal({
 
 function MergeConfirmModal({
   current,
+  currentChannels,
   candidate,
   suggestionId,
   initialKeepId,
@@ -879,6 +889,7 @@ function MergeConfirmModal({
   onMerged,
 }: {
   current: CustomerProfile
+  currentChannels: CustomerChannel[]
   candidate: CustomerListItem
   suggestionId: string | null
   initialKeepId?: string | null
@@ -894,7 +905,7 @@ function MergeConfirmModal({
     displayName: current.displayName,
     email: current.email,
     phone: current.phone,
-    channels: customerChannels(current),
+    channels: currentChannels,
     conversationCount: 0,
     totalOrders: current.totalOrders,
     totalSpend: current.totalSpend,
