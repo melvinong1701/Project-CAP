@@ -62,6 +62,11 @@ export async function GET(req: NextRequest) {
       drafted,
       escalated,
       avgResponseMin,
+      channelBreakdown,
+      volumeTrend,
+      openQueue,
+      languageBreakdown,
+      sentiment,
     ] = await Promise.all([
       countConversations(supabase, organizationId, currentStart),
       countConversations(supabase, organizationId, priorStart, currentStart),
@@ -69,6 +74,11 @@ export async function GET(req: NextRequest) {
       countAiConfidence(supabase, organizationId, currentStart, 'medium'),
       countAiConfidence(supabase, organizationId, currentStart, 'low'),
       getAverageResponseMinutes(supabase, organizationId, currentStart),
+      getChannelBreakdown(supabase, organizationId, currentStart),
+      getVolumeTrend(supabase, organizationId, currentStart, requestedRange),
+      getOpenQueue(supabase, organizationId),
+      getLanguageBreakdown(supabase, organizationId, currentStart),
+      getSentimentBreakdown(supabase, organizationId, currentStart),
     ])
 
     const aiAssisted = autoSent + drafted + escalated
@@ -94,6 +104,11 @@ export async function GET(req: NextRequest) {
         avgConfidence,
       },
       avgResponseMin,
+      channelBreakdown,
+      volumeTrend,
+      openQueue,
+      languageBreakdown,
+      sentiment,
     })
   } catch (err) {
     console.error('Dashboard stats GET error:', err)
@@ -144,6 +159,145 @@ async function countAiConfidence(
   }
 
   return count ?? 0
+}
+
+async function getChannelBreakdown(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  organizationId: string,
+  fromIso: string
+): Promise<Array<{ channel: string; count: number }>> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('channel')
+    .eq('organization_id', organizationId)
+    .gte('created_at', fromIso)
+    .returns<Array<{ channel: string }>>()
+
+  if (error) throw new Error(`Failed to get channel breakdown: ${error.message}`)
+
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    counts[row.channel] = (counts[row.channel] ?? 0) + 1
+  }
+
+  return Object.entries(counts)
+    .map(([channel, count]) => ({ channel, count }))
+    .sort((a, b) => b.count - a.count)
+}
+
+async function getVolumeTrend(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  organizationId: string,
+  fromIso: string,
+  range: DashboardRange
+): Promise<Array<{ date: string; count: number }>> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('created_at')
+    .eq('organization_id', organizationId)
+    .gte('created_at', fromIso)
+    .order('created_at', { ascending: true })
+    .returns<Array<{ created_at: string }>>()
+
+  if (error) throw new Error(`Failed to get volume trend: ${error.message}`)
+
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    const date = row.created_at.slice(0, 10)
+    counts[date] = (counts[date] ?? 0) + 1
+  }
+
+  const days = range === '24h' ? 1 : range === '7d' ? 7 : 30
+  const spine: Array<{ date: string; count: number }> = []
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000)
+    const key = d.toISOString().slice(0, 10)
+    spine.push({ date: key, count: counts[key] ?? 0 })
+  }
+
+  return spine
+}
+
+async function getOpenQueue(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  organizationId: string
+): Promise<{ open: number; pending: number; closed: number }> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('status')
+    .eq('organization_id', organizationId)
+    .returns<Array<{ status: string }>>()
+
+  if (error) throw new Error(`Failed to get open queue: ${error.message}`)
+
+  const result = { open: 0, pending: 0, closed: 0 }
+  for (const row of data ?? []) {
+    if (row.status === 'open') result.open++
+    else if (row.status === 'pending') result.pending++
+    else if (row.status === 'closed') result.closed++
+  }
+  return result
+}
+
+async function getLanguageBreakdown(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  organizationId: string,
+  fromIso: string
+): Promise<Array<{ language: string; count: number }>> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('ai_language')
+    .eq('organization_id', organizationId)
+    .gte('created_at', fromIso)
+    .not('ai_language', 'is', null)
+    .returns<Array<{ ai_language: string }>>()
+
+  if (error) throw new Error(`Failed to get language breakdown: ${error.message}`)
+
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    counts[row.ai_language] = (counts[row.ai_language] ?? 0) + 1
+  }
+
+  return Object.entries(counts)
+    .map(([language, count]) => ({ language, count }))
+    .sort((a, b) => b.count - a.count)
+}
+
+async function getSentimentBreakdown(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  organizationId: string,
+  fromIso: string
+): Promise<{ positive: number; neutral: number; negative: number } | null> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('ai_sentiment')
+    .eq('organization_id', organizationId)
+    .gte('created_at', fromIso)
+    .not('ai_sentiment', 'is', null)
+    .returns<Array<{ ai_sentiment: string }>>()
+
+  if (error) throw new Error(`Failed to get sentiment breakdown: ${error.message}`)
+
+  if (!data || data.length === 0) return null
+
+  let positive = 0
+  let neutral = 0
+  let negative = 0
+  for (const row of data) {
+    if (row.ai_sentiment === 'positive') positive++
+    else if (row.ai_sentiment === 'neutral') neutral++
+    else if (row.ai_sentiment === 'negative') negative++
+  }
+
+  const total = positive + neutral + negative
+  if (total === 0) return null
+
+  return {
+    positive: positive / total,
+    neutral: neutral / total,
+    negative: negative / total,
+  }
 }
 
 async function getAverageResponseMinutes(

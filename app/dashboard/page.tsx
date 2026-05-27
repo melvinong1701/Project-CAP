@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import {
   ArrowUpRight, ArrowDownRight,
   MessageSquare, Bot, Sparkles,
@@ -28,6 +28,11 @@ interface DashboardStats {
     avgConfidence: number
   }
   avgResponseMin: number | null
+  channelBreakdown: Array<{ channel: string; count: number }>
+  volumeTrend: Array<{ date: string; count: number }>
+  openQueue: { open: number; pending: number; closed: number }
+  languageBreakdown: Array<{ language: string; count: number }>
+  sentiment: { positive: number; neutral: number; negative: number } | null
 }
 
 const storeSettingsHref = '/settings'
@@ -132,6 +137,9 @@ export default function DashboardPage() {
 
   const totalAiReplies = liveAiBreakdown.autoSent + liveAiBreakdown.drafted + liveAiBreakdown.escalated
   const totalAiRepliesLabel = statsLoading ? '—' : totalAiReplies.toLocaleString()
+  const liveSentiment = !statsLoading && stats?.sentiment
+    ? stats.sentiment
+    : null
 
   return (
     <div className="flex bg-gray-50" style={{ height: '100dvh' }}>
@@ -156,9 +164,13 @@ export default function DashboardPage() {
         <main className="px-8 py-6 space-y-6 max-w-[1400px]">
 
           {/* ─── KPI grid ─────────────────────────────────────────────── */}
-          <section className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+          <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {liveKpis.map(k => {
               if (k.id === 'csat') return null
+              /* HIDDEN: re-enable when commerce data is live */
+              if (k.id === 'revenue') return null
+              /* HIDDEN: re-enable when commerce data is live */
+              if (k.id === 'orders') return null
 
               const emptyMessage = emptyKpiMessages[k.id]
               if (emptyMessage) {
@@ -178,7 +190,7 @@ export default function DashboardPage() {
             })}
           </section>
 
-          {/* ─── Revenue trend + Channel mix ──────────────────────────── */}
+          {/* HIDDEN: re-enable when commerce data is live
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2">
               <EmptyMetricCard
@@ -197,6 +209,36 @@ export default function DashboardPage() {
               ctaHref={storeSettingsHref}
               variant="list"
             />
+          </section>
+          */}
+
+          {/* ─── Volume trend + Channel mix ───────────────────────────── */}
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader
+                  title="Conversation volume"
+                  subtitle={`Daily conversations · ${range === '24h' ? 'today' : range === '7d' ? 'last 7 days' : 'last 30 days'}`}
+                  icon={<MessageSquare className="w-4 h-4 text-indigo-600" />}
+                />
+                <VolumeTrendChart
+                  data={stats?.volumeTrend ?? []}
+                  loading={statsLoading}
+                />
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader
+                title="Channel mix"
+                subtitle="Where conversations are coming from"
+                icon={<MessageSquare className="w-4 h-4 text-indigo-600" />}
+              />
+              <ChannelMixBlock
+                data={stats?.channelBreakdown ?? []}
+                loading={statsLoading}
+              />
+            </Card>
           </section>
 
           {/* ─── AI Performance + Top topics ──────────────────────────── */}
@@ -240,7 +282,7 @@ export default function DashboardPage() {
             </Card>
           </section>
 
-          {/* ─── Best sellers + Inventory alerts ──────────────────────── */}
+          {/* HIDDEN: re-enable when commerce data is live
           <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div className="lg:col-span-2">
               <EmptyMetricCard
@@ -260,8 +302,9 @@ export default function DashboardPage() {
               variant="list"
             />
           </section>
+          */}
 
-          {/* ─── Store leaderboard ────────────────────────────────────── */}
+          {/* HIDDEN: re-enable when commerce data is live
           <section>
             <EmptyMetricCard
               label="Stores"
@@ -270,6 +313,36 @@ export default function DashboardPage() {
               ctaHref={storeSettingsHref}
               variant="list"
             />
+          </section>
+          */}
+
+          {/* ─── Open queue + Language breakdown ──────────────────────── */}
+          <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader
+                  title="Open queue"
+                  subtitle="Current conversation status across all stores"
+                  icon={<MessageSquare className="w-4 h-4 text-indigo-600" />}
+                />
+                <OpenQueueBlock
+                  data={stats?.openQueue ?? null}
+                  loading={statsLoading}
+                />
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader
+                title="Language mix"
+                subtitle="Languages detected in conversations"
+                icon={<Bot className="w-4 h-4 text-indigo-600" />}
+              />
+              <LanguageBreakdownBlock
+                data={stats?.languageBreakdown ?? []}
+                loading={statsLoading}
+              />
+            </Card>
           </section>
 
           {/* ─── Agents + Customer signals ────────────────────────────── */}
@@ -290,7 +363,7 @@ export default function DashboardPage() {
                 subtitle="Mood and mix this week"
                 icon={<Bot className="w-4 h-4 text-indigo-600" />}
               />
-              <CustomerSignalsBlock data={customerSignals} range={range} />
+              <CustomerSignalsBlock data={customerSignals} range={range} liveSentiment={liveSentiment} />
             </Card>
           </section>
 
@@ -520,13 +593,265 @@ function TopicList({ topics }: { topics: DashData['topTopics'] }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
+   Live chat widgets
+   ──────────────────────────────────────────────────────────────────────── */
+
+function VolumeTrendChart({ data, loading }: { data: DashboardStats['volumeTrend']; loading: boolean }) {
+  const gradientId = `volumeTrend-${useId().replace(/:/g, '')}`
+
+  if (loading) {
+    return <div className="bg-gray-100 animate-pulse rounded-lg h-20 w-full" />
+  }
+
+  const total = data.reduce((sum, point) => sum + point.count, 0)
+  if (data.length === 0 || total === 0) {
+    return (
+      <p className="text-sm text-gray-400 h-20 flex items-center justify-center">
+        No data yet.
+      </p>
+    )
+  }
+
+  const peakPoint = data.reduce((peak, point) => point.count > peak.count ? point : peak, data[0])
+  const peakDate = formatTrendDate(peakPoint.date)
+  const statRow = (
+    <div className="flex items-center justify-between text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
+      <span>Total: <span className="font-medium text-gray-900">{total.toLocaleString()}</span></span>
+      <span>Peak: <span className="font-medium text-gray-900">{peakPoint.count.toLocaleString()}</span> on {peakDate}</span>
+    </div>
+  )
+
+  if (data.length === 1) {
+    return (
+      <>
+        <svg viewBox="0 0 400 80" className="w-full h-20">
+          <circle cx="200" cy="40" r="4" fill="#6366f1" />
+        </svg>
+        {statRow}
+      </>
+    )
+  }
+
+  const w = 400
+  const h = 80
+  const max = Math.max(...data.map(point => point.count))
+  const points = data.map((point, index) => {
+    const x = (index / (data.length - 1)) * w
+    const y = h - (point.count / max) * (h - 8) - 4
+    return `${x},${y}`
+  }).join(' ')
+
+  return (
+    <>
+      <svg viewBox="0 0 400 80" className="w-full h-20">
+        <defs>
+          <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#6366f1" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points={`0,${h} ${points} ${w},${h}`} fill={`url(#${gradientId})`} />
+        <polyline
+          points={points}
+          fill="none"
+          stroke="#6366f1"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      {statRow}
+    </>
+  )
+}
+
+const channelMeta: Record<string, { label: string; color: string }> = {
+  shopee: { label: 'Shopee', color: 'bg-orange-500' },
+  lazada: { label: 'Lazada', color: 'bg-purple-500' },
+  tiktok_shop: { label: 'TikTok Shop', color: 'bg-pink-500' },
+  telegram: { label: 'Telegram', color: 'bg-blue-500' },
+  whatsapp: { label: 'WhatsApp', color: 'bg-green-500' },
+  shopify: { label: 'Shopify', color: 'bg-emerald-600' },
+}
+
+function ChannelMixBlock({ data, loading }: { data: DashboardStats['channelBreakdown']; loading: boolean }) {
+  if (loading || data.length === 0) {
+    return <p className="text-sm text-gray-400">No conversations yet.</p>
+  }
+
+  const max = Math.max(...data.map(item => item.count))
+  return (
+    <ul className="space-y-3">
+      {data.map(item => {
+        const meta = channelMeta[item.channel] ?? {
+          label: titleCaseSlug(item.channel),
+          color: 'bg-gray-400',
+        }
+        return (
+          <li key={item.channel} className="flex items-center gap-3">
+            <span className={cn('w-2.5 h-2.5 rounded-full flex-shrink-0', meta.color)} />
+            <span className="w-24 truncate text-sm text-gray-700">{meta.label}</span>
+            <div className="h-1.5 flex-1 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className={cn('h-full rounded-full', meta.color)}
+                style={{ width: `${(item.count / max) * 100}%` }}
+              />
+            </div>
+            <span className="w-10 text-right text-sm tabular-nums text-gray-500">{item.count.toLocaleString()}</span>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function OpenQueueBlock({
+  data,
+  loading,
+}: {
+  data: DashboardStats['openQueue'] | null
+  loading: boolean
+}) {
+  if (loading) {
+    return (
+      <div className="space-y-5">
+        <div className="grid grid-cols-3 gap-4">
+          {[0, 1, 2].map(item => (
+            <div key={item} className="space-y-2">
+              <div className="h-3 w-16 rounded bg-gray-100 animate-pulse" />
+              <div className="h-8 w-12 rounded bg-gray-100 animate-pulse" />
+              <div className="h-3 w-14 rounded bg-gray-100 animate-pulse" />
+            </div>
+          ))}
+        </div>
+        <div className="h-2 w-full rounded-full bg-gray-100 animate-pulse" />
+      </div>
+    )
+  }
+
+  if (!data) {
+    return <p className="text-sm text-gray-400">No data yet.</p>
+  }
+
+  const total = data.open + data.pending + data.closed
+  const items = [
+    { id: 'open', label: 'Open', sub: 'open', value: data.open, text: 'text-amber-600', bar: 'bg-amber-500' },
+    { id: 'pending', label: 'Pending', sub: 'awaiting', value: data.pending, text: 'text-blue-600', bar: 'bg-blue-500' },
+    { id: 'closed', label: 'Closed', sub: 'resolved', value: data.closed, text: 'text-emerald-600', bar: 'bg-emerald-500' },
+  ]
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-3 gap-4">
+        {items.map(item => (
+          <div key={item.id}>
+            <p className="text-xs text-gray-500">{item.label}</p>
+            <p className={cn('text-3xl font-semibold tracking-tight mt-1', item.text)}>
+              {item.value.toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">{item.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <div className="flex h-2 w-full rounded-full overflow-hidden bg-gray-100">
+          {items.map(item => (
+            <div
+              key={item.id}
+              className={item.bar}
+              style={{ width: `${total === 0 ? 0 : (item.value / total) * 100}%` }}
+            />
+          ))}
+        </div>
+        <p className="text-xs text-gray-500 mt-2">{total.toLocaleString()} total conversations</p>
+      </div>
+    </div>
+  )
+}
+
+const languageLabels: Record<string, string> = {
+  en: 'English',
+  ms: 'Bahasa Malaysia',
+  id: 'Bahasa Indonesia',
+  th: 'Thai',
+  tl: 'Filipino',
+  vi: 'Vietnamese',
+  zh: 'Chinese',
+}
+
+const languageColors = ['bg-indigo-600', 'bg-indigo-400', 'bg-indigo-300', 'bg-indigo-200']
+
+function LanguageBreakdownBlock({
+  data,
+  loading,
+}: {
+  data: DashboardStats['languageBreakdown']
+  loading: boolean
+}) {
+  if (loading || data.length === 0) {
+    return (
+      <p className="text-sm text-gray-400">
+        Language detection will appear once conversations are classified.
+      </p>
+    )
+  }
+
+  const max = Math.max(...data.map(item => item.count))
+  return (
+    <ul className="space-y-3">
+      {data.map((item, index) => {
+        const color = languageColors[index % languageColors.length]
+        return (
+          <li key={item.language} className="flex items-center gap-3">
+            <span className={cn('w-2.5 h-2.5 rounded-full flex-shrink-0', color)} />
+            <span className="w-32 truncate text-sm text-gray-700">{languageLabels[item.language] ?? item.language}</span>
+            <div className="h-1.5 flex-1 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className={cn('h-full rounded-full', color)}
+                style={{ width: `${(item.count / max) * 100}%` }}
+              />
+            </div>
+            <span className="w-10 text-right text-sm tabular-nums text-gray-500">{item.count.toLocaleString()}</span>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function titleCaseSlug(value: string) {
+  return value
+    .split(/[_-]/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function formatTrendDate(date: string) {
+  return new Date(`${date}T00:00:00.000Z`).toLocaleDateString('en-SG', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+  })
+}
+
+/* ────────────────────────────────────────────────────────────────────────
    Customer signals
    ──────────────────────────────────────────────────────────────────────── */
 
-function CustomerSignalsBlock({ data, range }: { data: DashData['customerSignals']; range: Range }) {
+function CustomerSignalsBlock({
+  data,
+  range,
+  liveSentiment,
+}: {
+  data: DashData['customerSignals']
+  range: Range
+  liveSentiment?: DashboardStats['sentiment']
+}) {
   const cs = data
   const totalCust = cs.newCustomers + cs.returningCustomers
-  const sent = cs.sentiment
+  const sent = liveSentiment
   const periodLabel = range === '24h' ? 'today' : range === '7d' ? 'this week' : 'this month'
   return (
     <div className="space-y-5">
@@ -554,36 +879,47 @@ function CustomerSignalsBlock({ data, range }: { data: DashData['customerSignals
       <div>
         <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
           <span>Sentiment (AI inferred)</span>
-          <span className="text-emerald-600 font-medium">+{Math.round(sent.positive * 100)}% positive</span>
+          {sent && (
+            <span className="text-emerald-600 font-medium">+{Math.round(sent.positive * 100)}% positive</span>
+          )}
         </div>
-        <div className="flex h-2 w-full rounded-full overflow-hidden bg-gray-100">
-          <div className="bg-emerald-500" style={{ width: `${sent.positive * 100}%` }} />
-          <div className="bg-gray-300" style={{ width: `${sent.neutral * 100}%` }} />
-          <div className="bg-rose-500" style={{ width: `${sent.negative * 100}%` }} />
-        </div>
-        <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
-          <div>
-            <p className="text-emerald-700 font-medium">{Math.round(sent.positive * 100)}%</p>
-            <p className="text-gray-400">Positive</p>
-          </div>
-          <div>
-            <p className="text-gray-700 font-medium">{Math.round(sent.neutral * 100)}%</p>
-            <p className="text-gray-400">Neutral</p>
-          </div>
-          <div>
-            <p className="text-rose-700 font-medium">{Math.round(sent.negative * 100)}%</p>
-            <p className="text-gray-400">Negative</p>
-          </div>
-        </div>
+        {sent ? (
+          <>
+            <div className="flex h-2 w-full rounded-full overflow-hidden bg-gray-100">
+              <div className="bg-emerald-500" style={{ width: `${sent.positive * 100}%` }} />
+              <div className="bg-gray-300" style={{ width: `${sent.neutral * 100}%` }} />
+              <div className="bg-rose-500" style={{ width: `${sent.negative * 100}%` }} />
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
+              <div>
+                <p className="text-emerald-700 font-medium">{Math.round(sent.positive * 100)}%</p>
+                <p className="text-gray-400">Positive</p>
+              </div>
+              <div>
+                <p className="text-gray-700 font-medium">{Math.round(sent.neutral * 100)}%</p>
+                <p className="text-gray-400">Neutral</p>
+              </div>
+              <div>
+                <p className="text-rose-700 font-medium">{Math.round(sent.negative * 100)}%</p>
+                <p className="text-gray-400">Negative</p>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-gray-400 mt-2">
+            Sentiment data will appear once conversations are classified.
+          </p>
+        )}
       </div>
 
-      {/* Sentiment 14d sparkline */}
+      {/* HIDDEN: re-enable when sentiment trend data is live
       <div>
         <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
           <span>Positive sentiment trend</span>
         </div>
         <Sparkline data={cs.sentimentTrend} positive />
       </div>
+      */}
     </div>
   )
 }
