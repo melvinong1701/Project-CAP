@@ -5,7 +5,6 @@ import { MessageThread } from './MessageThread'
 import { AiSuggestionPanel } from './AiSuggestionPanel'
 import { ReplyBox } from './ReplyBox'
 import { CustomerPanel } from './CustomerPanel'
-import { ShopifyOrderPanel } from './ShopifyOrderPanel'
 import { ChannelBadge } from './ChannelBadge'
 import { AlertCircle, CheckCircle2, ChevronRight, Clock3, RotateCcw, SidebarClose, Sparkles } from 'lucide-react'
 
@@ -231,11 +230,7 @@ export function ConversationDetail({
       {/* Customer panel */}
       {showCustomerPanel && (
         <div className="w-60 flex-shrink-0 border-l border-gray-100 bg-white overflow-y-auto">
-          {isShopifyOrder ? (
-            <ShopifyOrderPanel conversationId={conversation.id} />
-          ) : (
-            <CustomerPanel conversation={conversation} onUpdateCustomer={onUpdateCustomer} />
-          )}
+          <CustomerPanel conversation={conversation} onUpdateCustomer={onUpdateCustomer} />
         </div>
       )}
     </div>

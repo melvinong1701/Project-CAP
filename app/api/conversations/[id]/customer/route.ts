@@ -92,9 +92,15 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     }
 
     if (conversation.customer_id) {
+      // UPDATE — only touch editable fields, never platform IDs.
       const { data: customer, error: updateError } = await supabase
         .from('customers')
-        .update(customerPayload)
+        .update({
+          display_name: cleanText(body.displayName),
+          email: cleanText(body.email),
+          phone: cleanText(body.phone),
+          notes: cleanText(body.notes),
+        })
         .eq('id', conversation.customer_id)
         .eq('organization_id', ORG_ID)
         .select('id, organization_id, display_name, email, phone, notes, telegram_id, shopee_buyer_id, lazada_buyer_id, tiktok_buyer_id')
