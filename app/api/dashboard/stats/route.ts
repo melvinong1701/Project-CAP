@@ -67,6 +67,8 @@ export async function GET(req: NextRequest) {
       openQueue,
       languageBreakdown,
       sentiment,
+      customerMix,
+      topTopics,
     ] = await Promise.all([
       countConversations(supabase, organizationId, currentStart),
       countConversations(supabase, organizationId, priorStart, currentStart),
@@ -79,6 +81,8 @@ export async function GET(req: NextRequest) {
       getOpenQueue(supabase, organizationId),
       getLanguageBreakdown(supabase, organizationId, currentStart),
       getSentimentBreakdown(supabase, organizationId, currentStart),
+      getCustomerMix(supabase, organizationId, currentStart),
+      getTopTopics(supabase, organizationId, currentStart),
     ])
 
     const aiAssisted = autoSent + drafted + escalated
@@ -109,6 +113,8 @@ export async function GET(req: NextRequest) {
       openQueue,
       languageBreakdown,
       sentiment,
+      customerMix,
+      topTopics,
     })
   } catch (err) {
     console.error('Dashboard stats GET error:', err)
@@ -298,6 +304,63 @@ async function getSentimentBreakdown(
     neutral: neutral / total,
     negative: negative / total,
   }
+}
+
+async function getCustomerMix(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  organizationId: string,
+  fromIso: string
+): Promise<{ newCustomers: number; returningCustomers: number }> {
+  const [{ count: newCount, error: newError }, { count: returningCount, error: returningError }] =
+    await Promise.all([
+      supabase
+        .from('customers')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId)
+        .gte('first_seen_at', fromIso)
+        .neq('merge_status', 'merged_into'),
+      supabase
+        .from('customers')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId)
+        .lt('first_seen_at', fromIso)
+        .gte('last_contact_at', fromIso)
+        .neq('merge_status', 'merged_into'),
+    ])
+
+  if (newError) throw new Error(`Failed to count new customers: ${newError.message}`)
+  if (returningError) throw new Error(`Failed to count returning customers: ${returningError.message}`)
+
+  return {
+    newCustomers: newCount ?? 0,
+    returningCustomers: returningCount ?? 0,
+  }
+}
+
+async function getTopTopics(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  organizationId: string,
+  fromIso: string
+): Promise<Array<{ topic: string; count: number }>> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('ai_intent')
+    .eq('organization_id', organizationId)
+    .gte('created_at', fromIso)
+    .not('ai_intent', 'is', null)
+    .returns<Array<{ ai_intent: string }>>()
+
+  if (error) throw new Error(`Failed to get top topics: ${error.message}`)
+
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    counts[row.ai_intent] = (counts[row.ai_intent] ?? 0) + 1
+  }
+
+  return Object.entries(counts)
+    .map(([topic, count]) => ({ topic, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 6)
 }
 
 async function getAverageResponseMinutes(

@@ -33,6 +33,8 @@ interface DashboardStats {
   openQueue: { open: number; pending: number; closed: number }
   languageBreakdown: Array<{ language: string; count: number }>
   sentiment: { positive: number; neutral: number; negative: number } | null
+  customerMix: { newCustomers: number; returningCustomers: number }
+  topTopics: Array<{ topic: string; count: number }>
 }
 
 const storeSettingsHref = '/settings'
@@ -62,7 +64,7 @@ export default function DashboardPage() {
 
   const data = useMemo(() => getDashboardData(range), [range])
   const {
-    kpis, topTopics, customerSignals,
+    kpis, customerSignals,
   } = data
 
   useEffect(() => {
@@ -278,7 +280,7 @@ export default function DashboardPage() {
                 subtitle="What buyers are asking about"
                 icon={<MessageSquare className="w-4 h-4 text-indigo-600" />}
               />
-              <TopicList topics={topTopics} />
+              <TopicList topics={stats?.topTopics ?? []} loading={statsLoading} />
             </Card>
           </section>
 
@@ -363,7 +365,12 @@ export default function DashboardPage() {
                 subtitle="Mood and mix this week"
                 icon={<Bot className="w-4 h-4 text-indigo-600" />}
               />
-              <CustomerSignalsBlock data={customerSignals} range={range} liveSentiment={liveSentiment} />
+              <CustomerSignalsBlock
+                data={customerSignals}
+                range={range}
+                liveSentiment={liveSentiment}
+                liveCustomerMix={stats?.customerMix}
+              />
             </Card>
           </section>
 
@@ -570,7 +577,31 @@ function AiBreakdownBar({ data }: { data: DashData['aiBreakdown'] }) {
    Top topics
    ──────────────────────────────────────────────────────────────────────── */
 
-function TopicList({ topics }: { topics: DashData['topTopics'] }) {
+function TopicList({ topics, loading }: { topics: DashboardStats['topTopics']; loading?: boolean }) {
+  if (loading) {
+    return (
+      <ul className="space-y-2.5">
+        {[1, 2, 3, 4].map(i => (
+          <li key={i} className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div className="h-3 w-36 rounded bg-gray-100 animate-pulse" />
+              <div className="h-3 w-6 rounded bg-gray-100 animate-pulse" />
+            </div>
+            <div className="h-1.5 bg-gray-100 rounded-full animate-pulse" />
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  if (topics.length === 0) {
+    return (
+      <p className="text-sm text-gray-400">
+        Topic data will appear once conversations are classified.
+      </p>
+    )
+  }
+
   const max = Math.max(...topics.map(t => t.count))
   return (
     <ul className="space-y-2.5">
@@ -675,7 +706,22 @@ const channelMeta: Record<string, { label: string; color: string }> = {
 }
 
 function ChannelMixBlock({ data, loading }: { data: DashboardStats['channelBreakdown']; loading: boolean }) {
-  if (loading || data.length === 0) {
+  if (loading) {
+    return (
+      <ul className="space-y-3">
+        {[1, 2, 3].map(i => (
+          <li key={i} className="flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-gray-100 animate-pulse flex-shrink-0" />
+            <div className="w-24 h-3 rounded bg-gray-100 animate-pulse" />
+            <div className="h-1.5 flex-1 rounded-full bg-gray-100 animate-pulse" />
+            <div className="w-10 h-3 rounded bg-gray-100 animate-pulse" />
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  if (data.length === 0) {
     return <p className="text-sm text-gray-400">No conversations yet.</p>
   }
 
@@ -789,7 +835,22 @@ function LanguageBreakdownBlock({
   data: DashboardStats['languageBreakdown']
   loading: boolean
 }) {
-  if (loading || data.length === 0) {
+  if (loading) {
+    return (
+      <ul className="space-y-3">
+        {[1, 2, 3].map(i => (
+          <li key={i} className="flex items-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-gray-100 animate-pulse flex-shrink-0" />
+            <div className="w-32 h-3 rounded bg-gray-100 animate-pulse" />
+            <div className="h-1.5 flex-1 rounded-full bg-gray-100 animate-pulse" />
+            <div className="w-10 h-3 rounded bg-gray-100 animate-pulse" />
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  if (data.length === 0) {
     return (
       <p className="text-sm text-gray-400">
         Language detection will appear once conversations are classified.
@@ -844,13 +905,17 @@ function CustomerSignalsBlock({
   data,
   range,
   liveSentiment,
+  liveCustomerMix,
 }: {
   data: DashData['customerSignals']
   range: Range
   liveSentiment?: DashboardStats['sentiment']
+  liveCustomerMix?: DashboardStats['customerMix']
 }) {
   const cs = data
-  const totalCust = cs.newCustomers + cs.returningCustomers
+  const newCustomers = liveCustomerMix?.newCustomers ?? cs.newCustomers
+  const returningCustomers = liveCustomerMix?.returningCustomers ?? cs.returningCustomers
+  const totalCust = newCustomers + returningCustomers
   const sent = liveSentiment
   const periodLabel = range === '24h' ? 'today' : range === '7d' ? 'this week' : 'this month'
   return (
@@ -861,18 +926,28 @@ function CustomerSignalsBlock({
           <span>Customer mix</span>
           <span>{totalCust} {periodLabel}</span>
         </div>
-        <div className="flex h-2 w-full rounded-full overflow-hidden bg-gray-100">
-          <div className="bg-indigo-500" style={{ width: `${(cs.newCustomers / totalCust) * 100}%` }} />
-          <div className="bg-indigo-200" style={{ width: `${(cs.returningCustomers / totalCust) * 100}%` }} />
-        </div>
-        <div className="flex items-center justify-between mt-2 text-xs">
-          <span className="flex items-center gap-1.5 text-gray-600">
-            <span className="w-2 h-2 rounded-full bg-indigo-500" /> New <span className="text-gray-900 font-medium">{cs.newCustomers}</span>
-          </span>
-          <span className="flex items-center gap-1.5 text-gray-600">
-            <span className="w-2 h-2 rounded-full bg-indigo-200" /> Returning <span className="text-gray-900 font-medium">{cs.returningCustomers}</span>
-          </span>
-        </div>
+        {totalCust === 0 ? (
+          <p className="text-xs text-gray-400 mt-2">
+            Customer mix will appear once conversations are linked to customer profiles.
+          </p>
+        ) : (
+          <>
+            <div className="flex h-2 w-full rounded-full overflow-hidden bg-gray-100">
+              <div className="bg-indigo-500" style={{ width: `${(newCustomers / totalCust) * 100}%` }} />
+              <div className="bg-indigo-200" style={{ width: `${(returningCustomers / totalCust) * 100}%` }} />
+            </div>
+            <div className="flex items-center justify-between mt-2 text-xs">
+              <span className="flex items-center gap-1.5 text-gray-600">
+                <span className="w-2 h-2 rounded-full bg-indigo-500" /> New{' '}
+                <span className="text-gray-900 font-medium">{newCustomers}</span>
+              </span>
+              <span className="flex items-center gap-1.5 text-gray-600">
+                <span className="w-2 h-2 rounded-full bg-indigo-200" /> Returning{' '}
+                <span className="text-gray-900 font-medium">{returningCustomers}</span>
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Sentiment */}
