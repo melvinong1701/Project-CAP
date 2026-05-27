@@ -34,6 +34,7 @@ type PlatformWithConnection = {
 }
 
 type ProductSyncStatus = 'never' | 'in_progress' | 'success' | 'failed'
+type ToastState = { message: string; tone: 'success' | 'error' }
 
 interface ProductSyncState {
   lastSyncedAt: string | null
@@ -77,8 +78,9 @@ function ProductCataloguePanel({ storeId }: { storeId: string }) {
   const [syncState, setSyncState] = useState<ProductSyncState | null>(null)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [reregistering, setReregistering] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const [toast, setToast] = useState<ToastState | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -129,10 +131,33 @@ function ProductCataloguePanel({ storeId }: { storeId: string }) {
       setSyncState(state)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Product sync failed'
-      setToast(message)
+      setToast({ message, tone: 'error' })
       setError(message)
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const handleReregisterWebhooks = async () => {
+    setReregistering(true)
+    setError(null)
+
+    try {
+      const res = await fetch(`/api/shopify/reregister-webhooks?storeId=${encodeURIComponent(storeId)}`, {
+        method: 'POST',
+      })
+      const json = await res.json() as { error?: string }
+
+      if (!res.ok) {
+        throw new Error(json.error ?? 'Webhook registration failed')
+      }
+
+      setToast({ message: 'Webhooks re-registered successfully', tone: 'success' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Webhook registration failed'
+      setError(message)
+    } finally {
+      setReregistering(false)
     }
   }
 
@@ -183,6 +208,22 @@ function ProductCataloguePanel({ storeId }: { storeId: string }) {
         </button>
       </div>
 
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          onClick={handleReregisterWebhooks}
+          disabled={loading || reregistering}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40"
+        >
+          {reregistering ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          {reregistering ? 'Registering...' : 'Re-register webhooks'}
+        </button>
+      </div>
+
       {error && (
         <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
@@ -198,9 +239,18 @@ function ProductCataloguePanel({ storeId }: { storeId: string }) {
       )}
 
       {toast && (
-        <div className="fixed bottom-5 right-5 z-50 flex max-w-sm items-center gap-2 rounded-xl border border-red-100 bg-white px-4 py-3 text-sm font-medium text-red-700 shadow-lg">
-          <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          {toast}
+        <div
+          className={cn(
+            'fixed bottom-5 right-5 z-50 flex max-w-sm items-center gap-2 rounded-xl border bg-white px-4 py-3 text-sm font-medium shadow-lg',
+            toast.tone === 'success' ? 'border-green-100 text-green-700' : 'border-red-100 text-red-700'
+          )}
+        >
+          {toast.tone === 'success' ? (
+            <Check className="h-4 w-4 flex-shrink-0" />
+          ) : (
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+          )}
+          {toast.message}
         </div>
       )}
     </div>

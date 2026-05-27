@@ -10,6 +10,7 @@ const PUBLIC_PATHS = [
   '/api/shopify/webhook',
   '/api/shopify/install',
   '/api/shopify/callback',
+  '/api/shopify/reregister-webhooks',
 ]
 
 export async function middleware(request: NextRequest) {

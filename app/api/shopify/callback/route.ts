@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
+import { SHOPIFY_WEBHOOK_TOPICS, registerShopifyWebhook } from '@/lib/shopifyWebhooks'
 
 // TODO: replace this with organization_id from a signed OAuth state once Shopify install starts from an authenticated store settings flow.
 const ORG_ID = '00000000-0000-0000-0000-000000000001'
@@ -40,80 +41,6 @@ function verifyHmac(query: URLSearchParams, secret: string): boolean {
     return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(hmac))
   } catch {
     return false
-  }
-}
-
-const WEBHOOK_SUBSCRIPTION_CREATE_MUTATION = `
-  mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $webhookSubscription: WebhookSubscriptionInput!) {
-    webhookSubscriptionCreate(topic: $topic, webhookSubscription: $webhookSubscription) {
-      webhookSubscription {
-        id
-        topic
-        uri
-      }
-      userErrors {
-        field
-        message
-      }
-    }
-  }
-`
-
-const SHOPIFY_WEBHOOK_TOPICS = [
-  'ORDERS_CREATE',
-  'PRODUCTS_CREATE',
-  'PRODUCTS_UPDATE',
-  'PRODUCTS_DELETE',
-] as const
-
-type ShopifyWebhookTopic = typeof SHOPIFY_WEBHOOK_TOPICS[number]
-
-async function registerShopifyWebhook(params: {
-  shop: string
-  accessToken: string
-  topic: ShopifyWebhookTopic
-  webhookUrl: string
-}) {
-  try {
-    const webhookRes = await fetch(`https://${params.shop}/admin/api/2026-04/graphql.json`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': params.accessToken,
-      },
-      body: JSON.stringify({
-        query: WEBHOOK_SUBSCRIPTION_CREATE_MUTATION,
-        variables: {
-          topic: params.topic,
-          webhookSubscription: {
-            uri: params.webhookUrl,
-          },
-        },
-      }),
-    })
-
-    const webhookData = await webhookRes.json() as {
-      data?: {
-        webhookSubscriptionCreate?: {
-          userErrors: { field?: string[]; message: string }[]
-        }
-      }
-    }
-    const userErrors = webhookData.data?.webhookSubscriptionCreate?.userErrors ?? []
-
-    if (!webhookRes.ok || userErrors.length > 0) {
-      console.error('Shopify webhook registration failed:', JSON.stringify({
-        topic: params.topic,
-        status: webhookRes.status,
-        userErrors,
-        rawData: webhookData,
-      }))
-    }
-  } catch (err) {
-    console.error('Shopify webhook registration failed:', {
-      topic: params.topic,
-      error: err instanceof Error ? err.message : String(err),
-    })
   }
 }
 
@@ -198,12 +125,19 @@ export async function GET(req: NextRequest) {
 
     const webhookUrl = `${appUrl}/api/shopify/webhook?storeId=${encodeURIComponent(storeId)}`
     for (const topic of SHOPIFY_WEBHOOK_TOPICS) {
-      await registerShopifyWebhook({
-        shop,
-        accessToken: tokenData.access_token,
-        topic,
-        webhookUrl,
-      })
+      try {
+        await registerShopifyWebhook({
+          shop,
+          accessToken: tokenData.access_token,
+          topic,
+          webhookUrl,
+        })
+      } catch (err) {
+        console.error('Shopify webhook registration failed:', {
+          topic,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
     }
 
     const cookieHeader = req.headers.get('cookie')
