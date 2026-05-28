@@ -51,10 +51,6 @@ interface ShopifyOrder {
   created_at: string
 }
 
-interface ConversationRow {
-  id: string
-}
-
 interface CustomerRow {
   id: string
   display_name: string | null
@@ -248,57 +244,15 @@ async function handleOrderCreate(params: { order: ShopifyOrder; storeId: string;
   const { order, storeId, organizationId } = params
   const supabase = getSupabase()
 
-  const customerName = [order.customer?.first_name, order.customer?.last_name].filter(Boolean).join(' ')
-    || order.customer?.email
-    || 'Unknown customer'
-  const itemCount = order.line_items.reduce((sum, item) => sum + item.quantity, 0)
-  const summary = `New order #${order.order_number} — ${itemCount} item(s) — ${order.currency} ${order.total_price}`
-
-  const { data: conv, error: convErr } = await supabase
-    .from('conversations')
-    .upsert(
-      {
-        organization_id: organizationId,
-        store_id: storeId,
-        channel: 'shopify',
-        external_id: String(order.id),
-        sender_name: customerName,
-        last_message: summary,
-        last_message_at: order.created_at,
-        is_read: false,
-        status: 'open',
-      },
-      { onConflict: 'store_id,channel,external_id', ignoreDuplicates: false }
-    )
-    .select('id')
-    .single<ConversationRow>()
-
-  if (convErr || !conv) {
-    console.error('Failed to upsert Shopify conversation:', convErr)
-    return
-  }
-
-  const { error: msgErr } = await supabase
-    .from('messages')
-    .upsert(
-      {
-        conversation_id: conv.id,
-        organization_id: organizationId,
-        external_id: String(order.id),
-        sender: 'customer',
-        content: summary,
-        timestamp: order.created_at,
-      },
-      { onConflict: 'conversation_id,external_id', ignoreDuplicates: true }
-    )
-
-  if (msgErr) {
-    console.error('Failed to insert Shopify message:', msgErr)
-  }
+  const customerName =
+    [order.customer?.first_name, order.customer?.last_name].filter(Boolean).join(' ') ||
+    order.customer?.email ||
+    'Unknown customer'
 
   const email = order.customer?.email?.trim() || null
   const rawPhone = order.customer?.phone?.trim() || null
   const phone = rawPhone ? rawPhone.replace(/[\s\-().]/g, '') : null
+
   const customerId = await upsertShopifyCustomer({
     supabase,
     organizationId,
@@ -308,22 +262,12 @@ async function handleOrderCreate(params: { order: ShopifyOrder; storeId: string;
     lastContactAt: order.created_at,
   })
 
-  const { error: linkError } = await supabase
-    .from('conversations')
-    .update({ customer_id: customerId })
-    .eq('id', conv.id)
-    .eq('organization_id', organizationId)
-
-  if (linkError) {
-    throw new Error('Failed to link Shopify conversation to customer')
-  }
-
   try {
     await resolveCustomerIdentity({
       supabase,
       organizationId,
       customerId,
-      conversationId: conv.id,
+      conversationId: null,
       storeId,
       lastContactAt: order.created_at,
     })
