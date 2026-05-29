@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     const hmacHeader = req.headers.get('x-shopify-hmac-sha256') ?? ''
     const topic = req.headers.get('x-shopify-topic') ?? ''
 
-    const clientSecret = process.env.SHOPIFY_CLIENT_SECRET
+    const clientSecret = process.env.SHOPIFY_WEBHOOK_SECRET ?? process.env.SHOPIFY_CLIENT_SECRET
     if (!clientSecret) {
       return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 })
     }

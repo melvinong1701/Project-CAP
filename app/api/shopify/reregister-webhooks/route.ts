@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireAuth } from '@/lib/getOrgId'
 import { SHOPIFY_WEBHOOK_TOPICS, registerShopifyWebhook } from '@/lib/shopifyWebhooks'
 
 export const dynamic = 'force-dynamic'
@@ -20,6 +21,10 @@ function getSupabase() {
 
 export async function POST(req: NextRequest) {
   try {
+    const ctx = await requireAuth()
+    if (ctx instanceof NextResponse) return ctx
+    const ORG_ID = ctx.organizationId
+
     const { searchParams } = new URL(req.url)
     const storeId = searchParams.get('storeId')
 
@@ -37,6 +42,7 @@ export async function POST(req: NextRequest) {
       .from('store_platforms')
       .select('shopify_domain, access_token')
       .eq('store_id', storeId)
+      .eq('organization_id', ORG_ID)
       .eq('platform_id', 'shopify')
       .maybeSingle<ShopifyPlatformRow>()
 

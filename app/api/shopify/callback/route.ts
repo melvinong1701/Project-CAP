@@ -98,6 +98,7 @@ export async function GET(req: NextRequest) {
       console.error('Shopify token exchange failed:', tokenData.error ?? tokenRes.statusText)
       return NextResponse.json({ error: 'Failed to obtain access token' }, { status: 502 })
     }
+    const accessToken = tokenData.access_token
 
     const supabase = getSupabase()
     if (!supabase) {
@@ -112,7 +113,7 @@ export async function GET(req: NextRequest) {
           organization_id: ORG_ID,
           platform_id: 'shopify',
           account_label: shop,
-          access_token: tokenData.access_token,
+          access_token: accessToken,
           shopify_domain: shop,
         },
         { onConflict: 'store_id,platform_id' }
@@ -124,21 +125,21 @@ export async function GET(req: NextRequest) {
     }
 
     const webhookUrl = `${appUrl}/api/shopify/webhook?storeId=${encodeURIComponent(storeId)}`
-    for (const topic of SHOPIFY_WEBHOOK_TOPICS) {
-      try {
-        await registerShopifyWebhook({
+    const webhookResults = await Promise.allSettled(
+      SHOPIFY_WEBHOOK_TOPICS.map(topic =>
+        registerShopifyWebhook({
           shop,
-          accessToken: tokenData.access_token,
+          accessToken,
           topic,
           webhookUrl,
         })
-      } catch (err) {
-        console.error('Shopify webhook registration failed:', {
-          topic,
-          error: err instanceof Error ? err.message : String(err),
-        })
+      )
+    )
+    webhookResults.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        console.error(`Shopify webhook registration failed for ${SHOPIFY_WEBHOOK_TOPICS[i]}:`, result.reason)
       }
-    }
+    })
 
     const cookieHeader = req.headers.get('cookie')
     fetch(`${appUrl}/api/shopify/sync-products?storeId=${encodeURIComponent(storeId)}`, {
