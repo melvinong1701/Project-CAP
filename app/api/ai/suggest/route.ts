@@ -76,15 +76,18 @@ async function fetchCatalogContext(
 
   return (data as ProductRow[]).map((product) => {
     const variantSummary = product.variants
-      .filter((variant) => variant.availableForSale)
-      .map((variant) => `${variant.title} — ${variant.price}`)
+      .map((variant) =>
+        variant.availableForSale
+          ? `${variant.title} — ${variant.price}`
+          : `${variant.title} — ${variant.price} (unavailable)`
+      )
       .join(', ')
 
     const content = [
       product.product_type ? `Type: ${product.product_type}` : null,
       product.status ? `Status: ${product.status}` : null,
       product.tags?.length ? `Tags: ${product.tags.join(', ')}` : null,
-      variantSummary ? `Available variants: ${variantSummary}` : 'No variants currently available',
+      variantSummary ? `Variants: ${variantSummary}` : 'No variants listed',
     ]
       .filter(Boolean)
       .join('. ')
