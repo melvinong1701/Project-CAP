@@ -9,6 +9,7 @@ import {
   upsertProduct,
 } from '@/lib/shopifyProductSync'
 import { resolveCustomerIdentity } from '@/lib/identity-resolution'
+import { normalizePhone } from '@/lib/phone'
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -29,23 +30,23 @@ function verifyWebhookHmac(rawBody: Buffer, hmacHeader: string, secret: string):
   }
 }
 
+interface ShopifyAddress {
+  country_code?: string
+}
+
 interface ShopifyCustomer {
   first_name?: string
   last_name?: string
   email?: string
   phone?: string
-}
-
-interface ShopifyLineItem {
-  title: string
-  quantity: number
+  default_address?: ShopifyAddress
 }
 
 interface ShopifyOrder {
   id: number
   order_number: number
   customer?: ShopifyCustomer
-  line_items: ShopifyLineItem[]
+  billing_address?: ShopifyAddress
   total_price: string
   currency: string
   created_at: string
@@ -251,7 +252,11 @@ async function handleOrderCreate(params: { order: ShopifyOrder; storeId: string;
 
   const email = order.customer?.email?.trim() || null
   const rawPhone = order.customer?.phone?.trim() || null
-  const phone = rawPhone ? rawPhone.replace(/[\s\-().]/g, '') : null
+  const customerCountry =
+    order.customer?.default_address?.country_code ??
+    order.billing_address?.country_code ??
+    undefined
+  const phone = normalizePhone(rawPhone, customerCountry)
 
   const customerId = await upsertShopifyCustomer({
     supabase,

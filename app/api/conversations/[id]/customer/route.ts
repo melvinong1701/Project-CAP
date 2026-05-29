@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { resolveCustomerIdentity } from '@/lib/identity-resolution'
 import { requireAuth } from '@/lib/getOrgId'
+import { normalizePhone } from '@/lib/phone'
 
 interface RouteContext {
   params: { id: string }
@@ -83,7 +84,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
       organization_id: ORG_ID,
       display_name: cleanText(body.displayName),
       email: cleanText(body.email),
-      phone: cleanText(body.phone),
+      phone: normalizePhone(cleanText(body.phone) ?? undefined),
       notes: cleanText(body.notes),
       telegram_id: conversation.channel === 'telegram' ? conversation.external_id : null,
       shopee_buyer_id: null,
@@ -98,7 +99,7 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
         .update({
           display_name: cleanText(body.displayName),
           email: cleanText(body.email),
-          phone: cleanText(body.phone),
+          phone: normalizePhone(cleanText(body.phone) ?? undefined),
           notes: cleanText(body.notes),
         })
         .eq('id', conversation.customer_id)

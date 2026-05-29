@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { normalizePhone as normalizePhoneLib } from '@/lib/phone'
 
 type MergeConfidence = 'high' | 'medium' | 'low'
 type MergeStatus = 'standalone' | 'primary' | 'merged_into'
@@ -573,7 +574,7 @@ async function mergeCustomers(input: {
 }
 
 function normalizePhone(phone: string | null): string {
-  return phone?.replace(/\D/g, '') ?? ''
+  return normalizePhoneLib(phone) ?? ''
 }
 
 function editDistance(left: string, right: string): number {

@@ -12,6 +12,7 @@ import {
   type MergeSuggestionRow,
 } from '../_utils'
 import { requireAuth } from '@/lib/getOrgId'
+import { normalizePhone } from '@/lib/phone'
 
 export const dynamic = 'force-dynamic'
 
@@ -249,7 +250,7 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
       .update({
         display_name: cleanText(body.displayName),
         email: cleanText(body.email),
-        phone: cleanText(body.phone),
+        phone: normalizePhone(cleanText(body.phone) ?? undefined),
         notes: cleanText(body.notes),
         tags: cleanTags(body.tags),
       })
