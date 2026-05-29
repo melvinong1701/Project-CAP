@@ -372,6 +372,7 @@ export async function preprocessMessage(input: SuggestReplyInput): Promise<Prepr
     'Use sentiment: positive, neutral, negative.',
     'Use urgency: low, medium, high.',
     'Set shouldEscalate true only when sentiment is negative and urgency is high, or intent is refund/dispute.',
+    'In the tags array, first include any product names, product identifiers, or model names mentioned by the customer (extract the name literally, ignore typos in surrounding words). Then include up to 3 additional topic keywords. Maximum 5 tags total.',
   ].join(' ')
 
   const raw = await callOpenAiJson({
