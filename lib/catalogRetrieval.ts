@@ -92,6 +92,32 @@ interface ProductRow {
   variants: { title: string; price: string; sku: string | null; availableForSale: boolean }[]
 }
 
+function isDefaultVariantTitle(title: string): boolean {
+  return title.trim().toLowerCase() === 'default title'
+}
+
+function formatVariantSummary(
+  variant: ProductRow['variants'][number],
+  totalVariants: number
+): string {
+  const availabilitySuffix = variant.availableForSale ? '' : ' (unavailable)'
+  if (isDefaultVariantTitle(variant.title)) {
+    return totalVariants === 1
+      ? `Price: ${variant.price}${availabilitySuffix}`
+      : `${variant.price}${availabilitySuffix}`
+  }
+
+  return `${variant.title} — ${variant.price}${availabilitySuffix}`
+}
+
+function formatVariantContent(variantSummary: string, hasSingleDefaultVariant: boolean): string {
+  if (!variantSummary) {
+    return 'No variants listed'
+  }
+
+  return hasSingleDefaultVariant ? variantSummary : `Variants: ${variantSummary}`
+}
+
 export async function fetchCatalogContext(
   supabase: SupabaseClient,
   organizationId: string,
@@ -112,19 +138,17 @@ export async function fetchCatalogContext(
   }
 
   return (data as ProductRow[]).map((product) => {
+    const hasSingleDefaultVariant = product.variants.length === 1 && isDefaultVariantTitle(product.variants[0].title)
     const variantSummary = product.variants
-      .map((variant) =>
-        variant.availableForSale
-          ? `${variant.title} — ${variant.price}`
-          : `${variant.title} — ${variant.price} (unavailable)`
-      )
+      .map((variant) => formatVariantSummary(variant, product.variants.length))
       .join(', ')
+    const variantContent = formatVariantContent(variantSummary, hasSingleDefaultVariant)
 
     const content = [
       product.product_type ? `Type: ${product.product_type}` : null,
       product.status ? `Status: ${product.status}` : null,
       product.tags?.length ? `Tags: ${product.tags.join(', ')}` : null,
-      variantSummary ? `Variants: ${variantSummary}` : 'No variants listed',
+      variantContent,
     ]
       .filter(Boolean)
       .join('. ')
