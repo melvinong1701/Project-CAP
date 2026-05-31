@@ -12,7 +12,7 @@ import {
 import type { Channel } from '@/lib/types'
 import { requireAuth } from '@/lib/getOrgId'
 import { sendTelegramMessage } from '@/lib/sendTelegramMessage'
-import { canAutoSend } from '@/lib/autoSend'
+import { canAutoSend, downgradeForAmbiguity } from '@/lib/autoSend'
 import { CATALOG_INTENTS, buildCatalogSearchQuery, fetchCatalogContext } from '@/lib/catalogRetrieval'
 
 export const dynamic = 'force-dynamic'
@@ -207,13 +207,14 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await suggestReply(suggestInput, preprocessing)
+    const effectiveConfidence = downgradeForAmbiguity(result.confidence, catalogContext.length, preprocessing.intent)
     let didAutoSend = false
 
     if (
       body.conversationId &&
       canAutoSend({
         autoSendEnabled: storeConfig?.auto_send_enabled,
-        confidence: result.confidence,
+        confidence: effectiveConfidence,
         intent: preprocessing.intent,
       })
     ) {
@@ -236,7 +237,7 @@ export async function POST(req: NextRequest) {
         .update({
           ai_suggestion: {
             text: result.text,
-            confidence: result.confidence,
+            confidence: effectiveConfidence,
             autoSent: didAutoSend,
             dismissed: false,
             reasoning: result.reasoning ?? null,
@@ -252,7 +253,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({
-      data: { ...result, autoSent: didAutoSend },
+      data: { ...result, confidence: effectiveConfidence, autoSent: didAutoSend },
     })
   } catch (err) {
     console.error('AI suggest error:', err instanceof Error ? err.message : 'Unknown error')

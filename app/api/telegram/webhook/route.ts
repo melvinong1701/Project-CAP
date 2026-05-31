@@ -9,7 +9,7 @@ import {
   type StoreConfig,
   type SuggestReplyInput,
 } from '@/lib/aiRouter'
-import { canAutoSend } from '@/lib/autoSend'
+import { canAutoSend, downgradeForAmbiguity } from '@/lib/autoSend'
 import { CATALOG_INTENTS, buildCatalogSearchQuery, fetchCatalogContext } from '@/lib/catalogRetrieval'
 import { sendTelegramMessage } from '@/lib/sendTelegramMessage'
 
@@ -145,6 +145,16 @@ async function triggerAiSuggestion(params: {
   senderName: string
 }) {
   try {
+    const { error: clearErr } = await params.supabase
+      .from('conversations')
+      .update({ ai_suggestion: null })
+      .eq('id', params.conversationId)
+      .eq('organization_id', params.organizationId)
+
+    if (clearErr) {
+      console.error('Failed to clear stale AI suggestion:', clearErr)
+    }
+
     let storeConfig: StoreConfig | null = null
 
     if (params.storeId) {
@@ -199,12 +209,13 @@ async function triggerAiSuggestion(params: {
       ...suggestInput,
       retrievedContext: catalogContext,
     }, preprocessing)
+    const effectiveConfidence = downgradeForAmbiguity(result.confidence, catalogContext.length, preprocessing.intent)
     let didAutoSend = false
 
     if (
       canAutoSend({
         autoSendEnabled: storeConfig?.auto_send_enabled,
-        confidence: result.confidence,
+        confidence: effectiveConfidence,
         intent: preprocessing.intent,
       })
     ) {
@@ -226,7 +237,7 @@ async function triggerAiSuggestion(params: {
       .update({
         ai_suggestion: {
           text: result.text,
-          confidence: result.confidence,
+          confidence: effectiveConfidence,
           autoSent: didAutoSend,
           dismissed: false,
           reasoning: result.reasoning ?? null,
