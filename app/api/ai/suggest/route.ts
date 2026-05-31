@@ -12,7 +12,12 @@ import {
 import type { Channel } from '@/lib/types'
 import { requireAuth } from '@/lib/getOrgId'
 import { sendTelegramMessage } from '@/lib/sendTelegramMessage'
-import { canAutoSend, downgradeForAmbiguity } from '@/lib/autoSend'
+import {
+  calibrateConfidence,
+  canAutoSend,
+  downgradeForAmbiguity,
+  isConfidenceCalibrationShadowMode,
+} from '@/lib/autoSend'
 import { CATALOG_INTENTS, buildCatalogSearchQuery, fetchCatalogContext } from '@/lib/catalogRetrieval'
 
 export const dynamic = 'force-dynamic'
@@ -208,13 +213,28 @@ export async function POST(req: NextRequest) {
 
     const result = await suggestReply(suggestInput, preprocessing)
     const effectiveConfidence = downgradeForAmbiguity(result.confidence, catalogContext.length, preprocessing.intent)
+    const calibration = calibrateConfidence({
+      confidence: effectiveConfidence,
+      intent: preprocessing.intent,
+      shouldEscalate: preprocessing.shouldEscalate,
+      sourceCited: result.sourceCited ?? null,
+      catalogMatchCount: catalogContext.length,
+      text: result.text,
+    })
+    const shadowMode = isConfidenceCalibrationShadowMode()
+    const sendConfidence = shadowMode ? effectiveConfidence : calibration.confidence
+    const wouldAutoSend = Boolean(body.conversationId) && canAutoSend({
+      autoSendEnabled: storeConfig?.auto_send_enabled,
+      confidence: calibration.confidence,
+      intent: preprocessing.intent,
+    })
     let didAutoSend = false
 
     if (
       body.conversationId &&
       canAutoSend({
         autoSendEnabled: storeConfig?.auto_send_enabled,
-        confidence: effectiveConfidence,
+        confidence: sendConfidence,
         intent: preprocessing.intent,
       })
     ) {
@@ -231,13 +251,27 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    console.info(JSON.stringify({
+      event: 'confidence_calibration',
+      conversationId: body.conversationId ?? null,
+      intent: preprocessing.intent,
+      modelConfidence: result.confidence,
+      effectiveConfidence,
+      promotedConfidence: calibration.confidence,
+      wouldAutoSend,
+      didAutoSend,
+      sourceCited: result.sourceCited ?? null,
+      catalogMatchCount: catalogContext.length,
+      blockedReason: calibration.blockedReason,
+    }))
+
     if (body.conversationId) {
       const { error: updateErr } = await supabase
         .from('conversations')
         .update({
           ai_suggestion: {
             text: result.text,
-            confidence: effectiveConfidence,
+            confidence: sendConfidence,
             autoSent: didAutoSend,
             dismissed: false,
             reasoning: result.reasoning ?? null,
@@ -253,7 +287,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({
-      data: { ...result, confidence: effectiveConfidence, autoSent: didAutoSend },
+      data: { ...result, confidence: sendConfidence, autoSent: didAutoSend },
     })
   } catch (err) {
     console.error('AI suggest error:', err instanceof Error ? err.message : 'Unknown error')

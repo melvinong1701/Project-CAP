@@ -9,7 +9,12 @@ import {
   type StoreConfig,
   type SuggestReplyInput,
 } from '@/lib/aiRouter'
-import { canAutoSend, downgradeForAmbiguity } from '@/lib/autoSend'
+import {
+  calibrateConfidence,
+  canAutoSend,
+  downgradeForAmbiguity,
+  isConfidenceCalibrationShadowMode,
+} from '@/lib/autoSend'
 import { CATALOG_INTENTS, buildCatalogSearchQuery, fetchCatalogContext } from '@/lib/catalogRetrieval'
 import { sendTelegramMessage } from '@/lib/sendTelegramMessage'
 
@@ -210,12 +215,27 @@ async function triggerAiSuggestion(params: {
       retrievedContext: catalogContext,
     }, preprocessing)
     const effectiveConfidence = downgradeForAmbiguity(result.confidence, catalogContext.length, preprocessing.intent)
+    const calibration = calibrateConfidence({
+      confidence: effectiveConfidence,
+      intent: preprocessing.intent,
+      shouldEscalate: preprocessing.shouldEscalate,
+      sourceCited: result.sourceCited ?? null,
+      catalogMatchCount: catalogContext.length,
+      text: result.text,
+    })
+    const shadowMode = isConfidenceCalibrationShadowMode()
+    const sendConfidence = shadowMode ? effectiveConfidence : calibration.confidence
+    const wouldAutoSend = canAutoSend({
+      autoSendEnabled: storeConfig?.auto_send_enabled,
+      confidence: calibration.confidence,
+      intent: preprocessing.intent,
+    })
     let didAutoSend = false
 
     if (
       canAutoSend({
         autoSendEnabled: storeConfig?.auto_send_enabled,
-        confidence: effectiveConfidence,
+        confidence: sendConfidence,
         intent: preprocessing.intent,
       })
     ) {
@@ -232,12 +252,26 @@ async function triggerAiSuggestion(params: {
       }
     }
 
+    console.info(JSON.stringify({
+      event: 'confidence_calibration',
+      conversationId: params.conversationId,
+      intent: preprocessing.intent,
+      modelConfidence: result.confidence,
+      effectiveConfidence,
+      promotedConfidence: calibration.confidence,
+      wouldAutoSend,
+      didAutoSend,
+      sourceCited: result.sourceCited ?? null,
+      catalogMatchCount: catalogContext.length,
+      blockedReason: calibration.blockedReason,
+    }))
+
     const { error: updateErr } = await params.supabase
       .from('conversations')
       .update({
         ai_suggestion: {
           text: result.text,
-          confidence: effectiveConfidence,
+          confidence: sendConfidence,
           autoSent: didAutoSend,
           dismissed: false,
           reasoning: result.reasoning ?? null,
