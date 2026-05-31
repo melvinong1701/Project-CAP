@@ -5,9 +5,13 @@ import {
   suggestReply,
   type ConversationContextMessage,
   type PreprocessingResult,
+  type RetrievedContextSnippet,
   type StoreConfig,
   type SuggestReplyInput,
 } from '@/lib/aiRouter'
+import { canAutoSend } from '@/lib/autoSend'
+import { CATALOG_INTENTS, buildCatalogSearchQuery, fetchCatalogContext } from '@/lib/catalogRetrieval'
+import { sendTelegramMessage } from '@/lib/sendTelegramMessage'
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -77,6 +81,20 @@ function toContextMessages(messages: MessageRow[] | null): ConversationContextMe
     }))
 }
 
+function extractCurrentBlock(messages: ConversationContextMessage[]): ConversationContextMessage[] {
+  const block: ConversationContextMessage[] = []
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].sender !== 'customer') {
+      break
+    }
+
+    block.unshift(messages[i])
+  }
+
+  return block
+}
+
 async function linkTelegramCustomer(params: {
   supabase: ReturnType<typeof getSupabase>
   organizationId: string
@@ -132,7 +150,7 @@ async function triggerAiSuggestion(params: {
     if (params.storeId) {
       const { data: config, error: configErr } = await params.supabase
         .from('store_ai_config')
-        .select('store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions, custom_guardrails')
+        .select('store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions, custom_guardrails, auto_send_enabled')
         .eq('store_id', params.storeId)
         .eq('organization_id', params.organizationId)
         .maybeSingle()
@@ -156,18 +174,52 @@ async function triggerAiSuggestion(params: {
       throw msgErr
     }
 
+    const history = toContextMessages(messages as MessageRow[] | null).reverse()
+    const currentBlock = extractCurrentBlock(history)
     const suggestInput: SuggestReplyInput = {
       organizationId: params.organizationId,
       channel: 'telegram',
       customerName: params.senderName,
       latestMessage: params.latestMessage,
-      conversationHistory: toContextMessages(messages as MessageRow[] | null).reverse(),
-      retrievedContext: [],
+      currentBlock: currentBlock.length > 0
+        ? currentBlock.slice(-5).map(message => message.content)
+        : undefined,
+      conversationHistory: history,
       storeConfig,
     }
 
     const preprocessing: PreprocessingResult = await preprocessMessage(suggestInput)
-    const result = await suggestReply(suggestInput, preprocessing)
+    let catalogContext: RetrievedContextSnippet[] = []
+    if (params.storeId && CATALOG_INTENTS.has(preprocessing.intent)) {
+      const searchQuery = buildCatalogSearchQuery(preprocessing, params.latestMessage, history)
+      catalogContext = await fetchCatalogContext(params.supabase, params.organizationId, params.storeId, searchQuery)
+    }
+
+    const result = await suggestReply({
+      ...suggestInput,
+      retrievedContext: catalogContext,
+    }, preprocessing)
+    let didAutoSend = false
+
+    if (
+      canAutoSend({
+        autoSendEnabled: storeConfig?.auto_send_enabled,
+        confidence: result.confidence,
+        intent: preprocessing.intent,
+      })
+    ) {
+      const sendResult = await sendTelegramMessage(params.supabase, {
+        conversationId: params.conversationId,
+        organizationId: params.organizationId,
+        text: result.text,
+      })
+
+      if (sendResult.ok) {
+        didAutoSend = true
+      } else {
+        console.error('Telegram auto-send failed:', sendResult.error)
+      }
+    }
 
     const { error: updateErr } = await params.supabase
       .from('conversations')
@@ -175,7 +227,7 @@ async function triggerAiSuggestion(params: {
         ai_suggestion: {
           text: result.text,
           confidence: result.confidence,
-          autoSent: false,
+          autoSent: didAutoSend,
           dismissed: false,
           reasoning: result.reasoning ?? null,
           sourceCited: result.sourceCited ?? null,

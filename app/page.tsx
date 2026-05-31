@@ -107,10 +107,6 @@ function mapAiSuggestion(row: ConvRow['ai_suggestion']): Conversation['aiSuggest
   }
 }
 
-function normalizeAiErrorCode(error: string | undefined): string {
-  return error === 'timeout' || error === 'no_messages' ? error : 'pipeline_error'
-}
-
 function mapMsg(row: MsgRow): Message {
   return {
     id: row.id,
@@ -486,53 +482,6 @@ export default function Home() {
               }
             })
           )
-          if ((payload.new as MsgRow).sender === 'customer') {
-            const convId = (payload.new as MsgRow).conversation_id
-            fetch('/api/ai/suggest', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ conversationId: convId }),
-            })
-              .then(r => r.json())
-              .then((res: SuggestResponse) => {
-                if (res.data) {
-                  setConversations(prev =>
-                    prev.map(c =>
-                      c.id === convId
-                        ? { ...c, aiSuggestion: { text: res.data!.text, confidence: res.data!.confidence as 'high' | 'medium' | 'low', autoSent: res.data!.autoSent === true, dismissed: false, reasoning: res.data!.reasoning, sourceCited: res.data!.sourceCited } }
-                        : c
-                    )
-                  )
-                } else {
-                  const errorCode = normalizeAiErrorCode(res.error)
-                  setConversations(prev =>
-                    prev.map(c =>
-                      c.id === convId ? { ...c, aiSuggestion: { error: errorCode, dismissed: false as const } } : c
-                    )
-                  )
-                  supabase
-                    .from('conversations')
-                    .update({ ai_suggestion: { error: errorCode, dismissed: false } })
-                    .eq('id', convId)
-                    .eq('organization_id', organizationId)
-                    .then(() => {})
-                }
-              })
-              .catch(() => {
-                const errorCode = 'pipeline_error'
-                setConversations(prev =>
-                  prev.map(c =>
-                    c.id === convId ? { ...c, aiSuggestion: { error: errorCode, dismissed: false as const } } : c
-                  )
-                )
-                supabase
-                  .from('conversations')
-                  .update({ ai_suggestion: { error: errorCode, dismissed: false } })
-                  .eq('id', convId)
-                  .eq('organization_id', organizationId)
-                  .then(() => {})
-              })
-          }
         }
       )
       .on(
