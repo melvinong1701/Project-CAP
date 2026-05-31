@@ -146,7 +146,6 @@ export async function fetchCatalogContext(
 
     const content = [
       product.product_type ? `Type: ${product.product_type}` : null,
-      product.status ? `Status: ${product.status}` : null,
       product.tags?.length ? `Tags: ${product.tags.join(', ')}` : null,
       variantContent,
     ]
