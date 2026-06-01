@@ -55,6 +55,15 @@ interface MsgRow {
 }
 
 type SuggestResponse = { data?: { text: string; confidence: string; autoSent?: boolean; reasoning?: string; sourceCited?: string | null }; error?: string }
+type AccountResponse = { data?: { account?: { organizationId?: string } } | null; error?: string | null }
+type ConversationsResponse = {
+  data?: {
+    conversations: ConvRow[]
+    messages: MsgRow[]
+    customers: CustomerRow[]
+  } | null
+  error?: string | null
+}
 
 // ─── Mappers ────────────────────────────────────────────────────────────────
 
@@ -120,7 +129,6 @@ function mapMsg(row: MsgRow): Message {
 // ─── Telegram Quick-Connect Modal ────────────────────────────────────────────
 
 interface TelegramSetupModalProps {
-  organizationId: string
   existingStores: { id: string; name: string }[]
   onClose: () => void
   onDone: () => void | Promise<void>
@@ -128,7 +136,7 @@ interface TelegramSetupModalProps {
 
 type SetupStep = 'store' | 'token' | 'connecting' | 'done' | 'error'
 
-function TelegramSetupModal({ organizationId, existingStores, onClose, onDone }: TelegramSetupModalProps) {
+function TelegramSetupModal({ existingStores, onClose, onDone }: TelegramSetupModalProps) {
   const [step, setStep] = useState<SetupStep>(existingStores.length > 0 ? 'token' : 'store')
   const [storeName, setStoreName] = useState('')
   const [selectedStoreId, setSelectedStoreId] = useState(existingStores[0]?.id ?? '')
@@ -146,17 +154,18 @@ function TelegramSetupModal({ organizationId, existingStores, onClose, onDone }:
     // Create a store first if needed
     if (!storeId) {
       const name = storeName.trim() || 'My Store'
-      const { data, error } = await supabase
-        .from('stores')
-        .insert({ name, organization_id: organizationId, country: 'SG', language: 'en', currency: 'SGD' })
-        .select('id')
-        .single()
-      if (error || !data) {
+      const storeRes = await fetch('/api/stores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, country: 'SG', language: 'en', currency: 'SGD' }),
+      })
+      const storeData = await storeRes.json() as { store?: { id: string }; error?: string }
+      if (!storeRes.ok || !storeData.store) {
         setErrorMsg('Failed to create store — please try again')
         setStep('error')
         return
       }
-      storeId = data.id
+      storeId = storeData.store.id
     }
 
     try {
@@ -348,23 +357,23 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false
 
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) {
+    fetch('/api/account')
+      .then(async response => {
+        if (!response.ok) return null
+        return response.json() as Promise<AccountResponse>
+      })
+      .then(payload => {
+        if (cancelled) return
+        const nextOrganizationId = payload?.data?.account?.organizationId
+        if (nextOrganizationId) {
+          setOrganizationId(nextOrganizationId)
+        } else {
+          setLoading(false)
+        }
+      })
+      .catch(() => {
         if (!cancelled) setLoading(false)
-        return
-      }
-
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('organization_id')
-        .eq('id', user.id)
-        .single<{ organization_id: string }>()
-
-      if (!cancelled) {
-        if (profile?.organization_id) setOrganizationId(profile.organization_id)
-        else setLoading(false)
-      }
-    })
+      })
 
     return () => {
       cancelled = true
@@ -375,45 +384,25 @@ export default function Home() {
   const fetchConversations = useCallback(async () => {
     if (!organizationId) return
 
-    const { data: convRows, error } = await supabase
-      .from('conversations')
-      .select('*')
-      .eq('organization_id', organizationId)
-      .order('last_message_at', { ascending: false })
+    const response = await fetch('/api/conversations')
+    if (!response.ok) {
+      setLoading(false)
+      return
+    }
 
-    if (error || !convRows) return
-
-    // Fetch messages for all conversations in one query
-    const convIds = convRows.map((r: ConvRow) => r.id)
-    const { data: msgRows } = convIds.length
-      ? await supabase
-          .from('messages')
-          .select('*')
-          .eq('organization_id', organizationId)
-          .in('conversation_id', convIds)
-          .order('timestamp', { ascending: true })
-      : { data: [] as MsgRow[] }
+    const payload = await response.json() as ConversationsResponse
+    const convRows = payload.data?.conversations ?? []
+    const msgRows = payload.data?.messages ?? []
+    const customerRows = payload.data?.customers ?? []
 
     const msgsByConv: Record<string, Message[]> = {}
-    ;(msgRows ?? []).forEach((m: MsgRow) => {
+    msgRows.forEach((m: MsgRow) => {
       if (!msgsByConv[m.conversation_id]) msgsByConv[m.conversation_id] = []
       msgsByConv[m.conversation_id].push(mapMsg(m))
     })
 
-    const customerIds = convRows
-      .map((r: ConvRow) => r.customer_id)
-      .filter((id: string | null): id is string => Boolean(id))
-
-    const { data: customerRows } = customerIds.length
-      ? await supabase
-          .from('customers')
-          .select('id, organization_id, display_name, email, phone, notes, telegram_id, shopee_buyer_id, lazada_buyer_id, tiktok_buyer_id')
-          .eq('organization_id', organizationId)
-          .in('id', customerIds)
-      : { data: [] as CustomerRow[] }
-
     const customersById: Record<string, CustomerContact> = {}
-    ;(customerRows ?? []).forEach((customer: CustomerRow) => {
+    customerRows.forEach((customer: CustomerRow) => {
       customersById[customer.id] = mapCustomer(customer)
     })
 
@@ -765,7 +754,6 @@ export default function Home() {
       {/* Telegram quick-connect modal */}
       {showTelegramSetup && (
         <TelegramSetupModal
-          organizationId={organizationId}
           existingStores={rawStores}
           onClose={() => setShowTelegramSetup(false)}
           onDone={async () => {
