@@ -36,8 +36,6 @@ const confidenceConfig: Record<AiConfidence, { label: string; color: string; bg:
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  return_policy: 'Return policy',
-  shipping_policy: 'Shipping policy',
   custom_instructions: 'Store instructions',
   product_catalog: 'Product catalogue',
   knowledge_base: 'Knowledge base',

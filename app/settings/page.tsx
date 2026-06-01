@@ -29,8 +29,6 @@ interface StoreAiConfigFields {
   autoSendEnabled: boolean
   brandVoice: string
   whatWeSell: string
-  returnPolicy: string
-  shippingPolicy: string
   commonFaqs: string
   customGuardrails: string[]
 }
@@ -102,8 +100,6 @@ const defaultStoreAiConfigFields: StoreAiConfigFields = {
   autoSendEnabled: false,
   brandVoice: '',
   whatWeSell: '',
-  returnPolicy: '',
-  shippingPolicy: '',
   commonFaqs: '',
   customGuardrails: [],
 }
@@ -116,8 +112,6 @@ const customInstructionSections = [
 
 interface ApiStoreAiConfigRow {
   tone: string | null
-  return_policy: string | null
-  shipping_policy: string | null
   custom_instructions: string | null
   custom_guardrails: string[] | null
   auto_send_enabled: boolean | null
@@ -164,8 +158,6 @@ function deserializeAiConfig(row: ApiStoreAiConfigRow | null): StoreAiConfigFiel
     ...parseCustomInstructions(row.custom_instructions),
     replyTone,
     autoSendEnabled: typeof row.auto_send_enabled === 'boolean' ? row.auto_send_enabled : false,
-    returnPolicy: row.return_policy ?? '',
-    shippingPolicy: row.shipping_policy ?? '',
     customGuardrails: Array.isArray(row.custom_guardrails) ? row.custom_guardrails : [],
   }
 }
@@ -182,8 +174,6 @@ function serializeAiConfig(fields: StoreAiConfigFields, store: StoreRecord) {
     storeName: store.name,
     tone: fields.replyTone,
     primaryLanguage: store.language,
-    returnPolicy: fields.returnPolicy,
-    shippingPolicy: fields.shippingPolicy,
     customInstructions: parts.join('\n\n'),
     customGuardrails: fields.customGuardrails,
     autoSendEnabled: fields.autoSendEnabled,
@@ -1346,22 +1336,9 @@ export default function SettingsPage() {
                           rows={3}
                           onChange={value => updateStoreAiConfig('whatWeSell', value)}
                         />
-                        <AiTextArea
-                          id="store-ai-return-policy"
-                          label="Return & refund policy"
-                          hint="Paste your standard policy. Per-store overrides coming later."
-                          value={storeAiConfig.returnPolicy}
-                          rows={3}
-                          onChange={value => updateStoreAiConfig('returnPolicy', value)}
-                        />
-                        <AiTextArea
-                          id="store-ai-shipping-policy"
-                          label="Shipping policy"
-                          hint="Your standard shipping terms."
-                          value={storeAiConfig.shippingPolicy}
-                          rows={3}
-                          onChange={value => updateStoreAiConfig('shippingPolicy', value)}
-                        />
+                        <p className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 py-3 text-xs text-indigo-700">
+                          Return, shipping, and other policies are now managed in the Knowledge tab.
+                        </p>
                         <AiTextArea
                           id="store-ai-common-faqs"
                           label="Common FAQs"
