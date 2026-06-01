@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ConnectedPlatformsTab from './stores/[storeId]/components/ConnectedPlatformsTab'
+import KnowledgeBaseTab from './stores/[storeId]/components/KnowledgeBaseTab'
 import {
   ArrowLeft, Store, Bell, Users, CreditCard,
   Check, X, Plus, Mail, Eye, ChevronDown, ChevronRight,
@@ -868,7 +869,7 @@ export default function SettingsPage() {
 
   const [storesView, setStoresView] = useState<'list' | 'add' | 'platforms'>('list')
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
-  const [storeTab, setStoreTab] = useState<'platforms' | 'ai'>('platforms')
+  const [storeTab, setStoreTab] = useState<'platforms' | 'ai' | 'knowledge'>('platforms')
   const [storeAiConfig, setStoreAiConfig] = useState<StoreAiConfigFields>(defaultStoreAiConfigFields)
   const [storeAiConfigLoading, setStoreAiConfigLoading] = useState(false)
   const [storeAiConfigSaving, setStoreAiConfigSaving] = useState(false)
@@ -1238,11 +1239,12 @@ export default function SettingsPage() {
                 {[
                   { id: 'platforms', label: 'Connected Platforms' },
                   { id: 'ai', label: 'AI context' },
+                  { id: 'knowledge', label: 'Knowledge' },
                 ].map(tab => (
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setStoreTab(tab.id as 'platforms' | 'ai')}
+                    onClick={() => setStoreTab(tab.id as 'platforms' | 'ai' | 'knowledge')}
                     className={cn(
                       'pb-3 text-sm font-semibold border-b-2 transition-colors',
                       storeTab === tab.id
@@ -1257,6 +1259,10 @@ export default function SettingsPage() {
 
               {storeTab === 'platforms' && (
                 <ConnectedPlatformsTab storeId={selectedStore.id} />
+              )}
+
+              {storeTab === 'knowledge' && (
+                <KnowledgeBaseTab storeId={selectedStore.id} />
               )}
 
               {storeTab === 'ai' && (
