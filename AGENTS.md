@@ -206,6 +206,12 @@ If a task spec asks for anything in this list, flag it before building.
 
 ---
 
+## Local setup gotchas
+
+- **iCloud/Dropbox-synced checkouts duplicate files** (e.g. `@types/node 2`), which breaks `tsc` and blocks the pre-push hook with `TS2688: Cannot find type definition file`. Fix: `rm -rf node_modules/@types/*\ 2` (or `rm -rf node_modules && npm ci`), and keep the repo out of a synced folder.
+
+---
+
 ## Code standards
 
 - TypeScript everywhere — no implicit `any`
