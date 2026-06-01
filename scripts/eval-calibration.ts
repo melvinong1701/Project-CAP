@@ -24,7 +24,7 @@ const baseParams: CalibrationParams = {
   confidence: 'medium',
   intent: 'shipping',
   shouldEscalate: false,
-  sourceCited: 'shipping_policy',
+  sourceCited: 'knowledge_base',
   catalogMatchCount: 0,
   text: 'Your order is on the way.',
 }
@@ -67,7 +67,7 @@ const cases: CalibrationCase[] = [
     params: {
       ...baseParams,
       intent: 'shipping',
-      sourceCited: 'shipping_policy',
+      sourceCited: 'knowledge_base',
       catalogMatchCount: 3,
     },
     expected: expected('high', true, null),

@@ -33,8 +33,6 @@ export interface StoreConfig {
   store_name?: string | null
   tone?: string | null
   primary_language?: string | null
-  return_policy?: string | null
-  shipping_policy?: string | null
   custom_instructions?: string | null
   custom_guardrails?: string[] | null
   auto_send_enabled?: boolean | null
@@ -181,12 +179,7 @@ function buildStoreContext(config: StoreConfig | null): string {
     config.primary_language
       ? `Default language if the customer's language cannot be determined: ${sanitizeText(config.primary_language)}.`
       : '',
-    config.return_policy
-      ? `Return policy: ${sanitizeText(config.return_policy)}`
-      : 'Return policy: not specified — escalate return requests to a human agent.',
-    config.shipping_policy
-      ? `Shipping policy: ${sanitizeText(config.shipping_policy)}`
-      : 'Shipping policy: not specified — escalate shipping queries requiring specific details to a human agent.',
+    'Return, shipping, and other store policies are provided only via retrieved context when relevant. If the customer asks about a policy and no relevant policy appears in the retrieved context below, do not invent one — escalate to a human agent.',
     customInstructions
       ? `Additional context from the store: ${customInstructions}`
       : '',
@@ -418,7 +411,7 @@ async function runReplyGeneration(params: {
     'confidence must be high, medium, or low.',
     'autoSent may be true only when confidence is high and the answer is factual/routine.',
     'reasoning must be 1 sentence explaining why you assigned this confidence level.',
-    'sourceCited must be exactly one of: "return_policy", "shipping_policy", "custom_instructions", "product_catalog", "knowledge_base", or null.',
+    'sourceCited must be exactly one of: "custom_instructions", "product_catalog", "knowledge_base", or null.',
     'Set sourceCited to the store data field you primarily referenced when generating this reply. If you did not reference any store data, set it to null.',
   ].join(' ')
 

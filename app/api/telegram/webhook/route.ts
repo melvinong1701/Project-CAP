@@ -166,7 +166,7 @@ async function triggerAiSuggestion(params: {
     if (params.storeId) {
       const { data: config, error: configErr } = await params.supabase
         .from('store_ai_config')
-        .select('store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions, custom_guardrails, auto_send_enabled')
+        .select('store_name, tone, primary_language, custom_instructions, custom_guardrails, auto_send_enabled')
         .eq('store_id', params.storeId)
         .eq('organization_id', params.organizationId)
         .maybeSingle()

@@ -7,8 +7,6 @@ interface StoreAiConfigBody {
   storeName?: unknown
   tone?: unknown
   primaryLanguage?: unknown
-  returnPolicy?: unknown
-  shippingPolicy?: unknown
   customInstructions?: unknown
   customGuardrails?: unknown
   autoSendEnabled?: unknown
@@ -45,7 +43,7 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabase()
     const { data, error } = await supabase
       .from('store_ai_config')
-      .select('id, organization_id, store_id, store_name, tone, primary_language, return_policy, shipping_policy, custom_instructions, custom_guardrails, auto_send_enabled, created_at, updated_at')
+      .select('id, organization_id, store_id, store_name, tone, primary_language, custom_instructions, custom_guardrails, auto_send_enabled, created_at, updated_at')
       .eq('store_id', storeId)
       .eq('organization_id', ORG_ID)
       .maybeSingle()
@@ -75,8 +73,6 @@ export async function POST(req: NextRequest) {
       storeName,
       tone,
       primaryLanguage,
-      returnPolicy,
-      shippingPolicy,
       customInstructions,
     } = body
 
@@ -85,11 +81,9 @@ export async function POST(req: NextRequest) {
       !requiredString(storeName) ||
       !requiredString(tone) ||
       !requiredString(primaryLanguage) ||
-      !requiredString(returnPolicy) ||
-      !requiredString(shippingPolicy) ||
       !requiredString(customInstructions)
     ) {
-      return jsonError('storeId, storeName, tone, primaryLanguage, returnPolicy, shippingPolicy, and customInstructions are required', 400)
+      return jsonError('storeId, storeName, tone, primaryLanguage, and customInstructions are required', 400)
     }
 
     const rawGuardrails = body.customGuardrails
@@ -112,8 +106,6 @@ export async function POST(req: NextRequest) {
           store_name: storeName,
           tone,
           primary_language: primaryLanguage,
-          return_policy: returnPolicy,
-          shipping_policy: shippingPolicy,
           custom_instructions: customInstructions,
           custom_guardrails: customGuardrails,
           auto_send_enabled: typeof body.autoSendEnabled === 'boolean' ? body.autoSendEnabled : false,
