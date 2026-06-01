@@ -16,6 +16,7 @@ import {
   isConfidenceCalibrationShadowMode,
 } from '@/lib/autoSend'
 import { CATALOG_INTENTS, buildCatalogSearchQuery, fetchCatalogContext } from '@/lib/catalogRetrieval'
+import { KNOWLEDGE_INTENTS, buildKnowledgeSearchQuery, fetchKnowledgeContext } from '@/lib/knowledgeRetrieval'
 import { sendTelegramMessage } from '@/lib/sendTelegramMessage'
 
 function getSupabase() {
@@ -205,14 +206,21 @@ async function triggerAiSuggestion(params: {
 
     const preprocessing: PreprocessingResult = await preprocessMessage(suggestInput)
     let catalogContext: RetrievedContextSnippet[] = []
+    let knowledgeContext: RetrievedContextSnippet[] = []
     if (params.storeId && CATALOG_INTENTS.has(preprocessing.intent)) {
       const searchQuery = buildCatalogSearchQuery(preprocessing, params.latestMessage, history)
       catalogContext = await fetchCatalogContext(params.supabase, params.organizationId, params.storeId, searchQuery)
     }
+    if (params.storeId && KNOWLEDGE_INTENTS.has(preprocessing.intent)) {
+      const searchQuery = buildKnowledgeSearchQuery(preprocessing, params.latestMessage)
+      knowledgeContext = await fetchKnowledgeContext(params.supabase, params.organizationId, params.storeId, searchQuery)
+    }
+
+    const retrievedContext = [...catalogContext, ...knowledgeContext]
 
     const result = await suggestReply({
       ...suggestInput,
-      retrievedContext: catalogContext,
+      retrievedContext,
     }, preprocessing)
     const effectiveConfidence = downgradeForAmbiguity(result.confidence, catalogContext.length, preprocessing.intent)
     const calibration = calibrateConfidence({
@@ -263,6 +271,7 @@ async function triggerAiSuggestion(params: {
       didAutoSend,
       sourceCited: result.sourceCited ?? null,
       catalogMatchCount: catalogContext.length,
+      knowledgeMatchCount: knowledgeContext.length,
       blockedReason: calibration.blockedReason,
     }))
 

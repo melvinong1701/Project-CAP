@@ -418,7 +418,7 @@ async function runReplyGeneration(params: {
     'confidence must be high, medium, or low.',
     'autoSent may be true only when confidence is high and the answer is factual/routine.',
     'reasoning must be 1 sentence explaining why you assigned this confidence level.',
-    'sourceCited must be exactly one of: "return_policy", "shipping_policy", "custom_instructions", "product_catalog", or null.',
+    'sourceCited must be exactly one of: "return_policy", "shipping_policy", "custom_instructions", "product_catalog", "knowledge_base", or null.',
     'Set sourceCited to the store data field you primarily referenced when generating this reply. If you did not reference any store data, set it to null.',
   ].join(' ')
 
@@ -438,9 +438,9 @@ async function runReplyGeneration(params: {
   const contextPayload = [
     params.input.retrievedContext?.length
       ? [
-          'Product catalog matches:',
+          'Retrieved store context:',
           ...params.input.retrievedContext.slice(0, 5).map((snippet) =>
-            `- ${snippet.title}${snippet.content ? ` — ${snippet.content}` : ''}`
+            `- ${snippet.title}${snippet.source ? ` [${snippet.source}]` : ''}${snippet.content ? ` — ${snippet.content}` : ''}`
           ),
         ].join('\n')
       : null,

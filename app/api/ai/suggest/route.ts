@@ -19,6 +19,7 @@ import {
   isConfidenceCalibrationShadowMode,
 } from '@/lib/autoSend'
 import { CATALOG_INTENTS, buildCatalogSearchQuery, fetchCatalogContext } from '@/lib/catalogRetrieval'
+import { KNOWLEDGE_INTENTS, buildKnowledgeSearchQuery, fetchKnowledgeContext } from '@/lib/knowledgeRetrieval'
 
 export const dynamic = 'force-dynamic'
 
@@ -188,15 +189,33 @@ export async function POST(req: NextRequest) {
       storeConfig,
     })
 
-    let catalogContext: RetrievedContextSnippet[] = body.retrievedContext ?? []
+    const providedContext: RetrievedContextSnippet[] = body.retrievedContext ?? []
+    let catalogContext: RetrievedContextSnippet[] = providedContext.length > 0 && CATALOG_INTENTS.has(preprocessing.intent)
+      ? providedContext
+      : []
+    let knowledgeContext: RetrievedContextSnippet[] = providedContext.length > 0 && KNOWLEDGE_INTENTS.has(preprocessing.intent)
+      ? providedContext
+      : []
     if (
-      catalogContext.length === 0 &&
+      providedContext.length === 0 &&
       conversation?.store_id &&
       CATALOG_INTENTS.has(preprocessing.intent)
     ) {
       const searchQuery = buildCatalogSearchQuery(preprocessing, latestMessage, history)
       catalogContext = await fetchCatalogContext(supabase, ORG_ID, conversation.store_id, searchQuery)
     }
+    if (
+      providedContext.length === 0 &&
+      conversation?.store_id &&
+      KNOWLEDGE_INTENTS.has(preprocessing.intent)
+    ) {
+      const searchQuery = buildKnowledgeSearchQuery(preprocessing, latestMessage)
+      knowledgeContext = await fetchKnowledgeContext(supabase, ORG_ID, conversation.store_id, searchQuery)
+    }
+
+    const retrievedContext = providedContext.length > 0
+      ? providedContext
+      : [...catalogContext, ...knowledgeContext]
 
     const suggestInput: SuggestReplyInput = {
       organizationId: ORG_ID,
@@ -207,7 +226,7 @@ export async function POST(req: NextRequest) {
         ? currentBlock.slice(-5).map(message => message.content)
         : undefined,
       conversationHistory: history,
-      retrievedContext: catalogContext,
+      retrievedContext,
       storeConfig,
     }
 
@@ -262,6 +281,7 @@ export async function POST(req: NextRequest) {
       didAutoSend,
       sourceCited: result.sourceCited ?? null,
       catalogMatchCount: catalogContext.length,
+      knowledgeMatchCount: knowledgeContext.length,
       blockedReason: calibration.blockedReason,
     }))
 
