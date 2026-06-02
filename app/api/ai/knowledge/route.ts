@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth, requireOwner } from '@/lib/getOrgId'
-import { checkPolicyConflict, type PolicyConflictResult } from '@/lib/policyConflictCheck'
+import { checkKnowledgeConflict, type KnowledgeConflictResult } from '@/lib/knowledgeConflictCheck'
 
 type KnowledgeKind = 'policy' | 'faq'
 
@@ -24,8 +24,9 @@ interface KnowledgeFields {
   is_active?: boolean
 }
 
-interface PolicyRow {
+interface KnowledgeConflictRow {
   id: string
+  kind: KnowledgeKind
   title: string
   body: string
   is_active: boolean
@@ -56,7 +57,7 @@ function jsonError(error: string, status: number) {
   return NextResponse.json({ error }, { status })
 }
 
-function jsonConflict(conflict: Extract<PolicyConflictResult, { conflict: true }>) {
+function jsonConflict(conflict: Extract<KnowledgeConflictResult, { conflict: true }>) {
   return NextResponse.json({
     error: conflict.explanation,
     conflict: {
@@ -120,18 +121,19 @@ function normalizePolicyTitle(title: string) {
   return title.trim().toLowerCase()
 }
 
-function hasPolicyTitleCollision(policies: PolicyRow[], title: string) {
+function hasPolicyTitleCollision(policies: KnowledgeConflictRow[], title: string) {
   const normalizedTitle = normalizePolicyTitle(title)
   return policies.some(policy => normalizePolicyTitle(policy.title) === normalizedTitle)
 }
 
-function activeConflictPolicies(policies: PolicyRow[]) {
-  return policies
-    .filter(policy => policy.is_active)
-    .map(policy => ({
-      id: policy.id,
-      title: policy.title,
-      body: policy.body,
+function activeConflictEntries(entries: KnowledgeConflictRow[]) {
+  return entries
+    .filter(entry => entry.is_active)
+    .map(entry => ({
+      id: entry.id,
+      kind: entry.kind,
+      title: entry.title,
+      body: entry.body,
     }))
 }
 
@@ -221,33 +223,33 @@ export async function POST(req: NextRequest) {
     if (!fields.kind || !fields.title || !fields.body) return jsonError('Invalid knowledge entry', 400)
 
     const supabase = getSupabase()
+    const { data: entriesData, error: entriesError } = await supabase
+      .from('store_knowledge')
+      .select('id, kind, title, body, is_active')
+      .eq('organization_id', ORG_ID)
+      .eq('store_id', requestBody.storeId)
+
+    if (entriesError) {
+      console.error('Fetch store knowledge entries error:', entriesError)
+      return jsonError('Failed to validate knowledge entry', 500)
+    }
+
+    const entries = (entriesData ?? []) as KnowledgeConflictRow[]
     if (fields.kind === 'policy') {
-      const { data: policiesData, error: policiesError } = await supabase
-        .from('store_knowledge')
-        .select('id, title, body, is_active')
-        .eq('organization_id', ORG_ID)
-        .eq('store_id', requestBody.storeId)
-        .eq('kind', 'policy')
-
-      if (policiesError) {
-        console.error('Fetch store policies error:', policiesError)
-        return jsonError('Failed to validate policy entry', 500)
-      }
-
-      const policies = (policiesData ?? []) as PolicyRow[]
+      const policies = entries.filter(entry => entry.kind === 'policy')
       if (hasPolicyTitleCollision(policies, fields.title)) {
         return jsonError(policyTitleDuplicateMessage, 409)
       }
+    }
 
-      if (requestBody.acknowledgeConflict !== true) {
-        const conflict = await checkPolicyConflict({
-          candidate: { title: fields.title, body: fields.body },
-          existing: activeConflictPolicies(policies),
-        })
+    if (requestBody.acknowledgeConflict !== true) {
+      const conflict = await checkKnowledgeConflict({
+        candidate: { title: fields.title, body: fields.body },
+        existing: activeConflictEntries(entries),
+      })
 
-        if (conflict.conflict) {
-          return jsonConflict(conflict)
-        }
+      if (conflict.conflict) {
+        return jsonConflict(conflict)
       }
     }
 
@@ -321,34 +323,34 @@ export async function PATCH(req: NextRequest) {
     const nextTitle = fields.title ?? current.title
     const nextBody = fields.body ?? current.body
 
+    const { data: entriesData, error: entriesError } = await supabase
+      .from('store_knowledge')
+      .select('id, kind, title, body, is_active')
+      .eq('organization_id', ORG_ID)
+      .eq('store_id', current.store_id)
+      .neq('id', requestBody.id)
+
+    if (entriesError) {
+      console.error('Fetch store knowledge entries error:', entriesError)
+      return jsonError('Failed to validate knowledge entry', 500)
+    }
+
+    const entries = (entriesData ?? []) as KnowledgeConflictRow[]
     if (nextKind === 'policy') {
-      const { data: policiesData, error: policiesError } = await supabase
-        .from('store_knowledge')
-        .select('id, title, body, is_active')
-        .eq('organization_id', ORG_ID)
-        .eq('store_id', current.store_id)
-        .eq('kind', 'policy')
-        .neq('id', requestBody.id)
-
-      if (policiesError) {
-        console.error('Fetch store policies error:', policiesError)
-        return jsonError('Failed to validate policy entry', 500)
-      }
-
-      const policies = (policiesData ?? []) as PolicyRow[]
+      const policies = entries.filter(entry => entry.kind === 'policy')
       if (hasPolicyTitleCollision(policies, nextTitle)) {
         return jsonError(policyTitleDuplicateMessage, 409)
       }
+    }
 
-      if (requestBody.acknowledgeConflict !== true && (fields.title !== undefined || fields.body !== undefined)) {
-        const conflict = await checkPolicyConflict({
-          candidate: { title: nextTitle, body: nextBody },
-          existing: activeConflictPolicies(policies),
-        })
+    if (requestBody.acknowledgeConflict !== true && (fields.title !== undefined || fields.body !== undefined)) {
+      const conflict = await checkKnowledgeConflict({
+        candidate: { title: nextTitle, body: nextBody },
+        existing: activeConflictEntries(entries),
+      })
 
-        if (conflict.conflict) {
-          return jsonConflict(conflict)
-        }
+      if (conflict.conflict) {
+        return jsonConflict(conflict)
       }
     }
 

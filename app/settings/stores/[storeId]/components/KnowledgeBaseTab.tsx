@@ -52,7 +52,7 @@ type PendingConflictSave =
   | { mode: 'create'; form: KnowledgeFormState }
   | { mode: 'edit'; entryId: string; form: KnowledgeFormState }
 
-interface PolicyConflictState extends KnowledgeConflict {
+interface KnowledgeConflictState extends KnowledgeConflict {
   pending: PendingConflictSave
 }
 
@@ -264,8 +264,9 @@ function KnowledgeForm({
   )
 }
 
-function PolicyConflictPanel({
+function KnowledgeConflictPanel({
   existingTitle,
+  existingKindLabel,
   explanation,
   saving,
   onEditExisting,
@@ -273,20 +274,23 @@ function PolicyConflictPanel({
   onCancel,
 }: {
   existingTitle: string
+  existingKindLabel: string | null
   explanation: string
   saving: boolean
   onEditExisting: () => void
   onSaveAnyway: () => void
   onCancel: () => void
 }) {
+  const heading = existingKindLabel
+    ? `This may contradict an existing ${existingKindLabel}: ${existingTitle}.`
+    : 'This may contradict an existing entry.'
+
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
       <div className="flex gap-3">
         <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
         <div className="min-w-0 flex-1">
-          <p className="font-semibold">
-            This may contradict an existing policy: {existingTitle}.
-          </p>
+          <p className="font-semibold">{heading}</p>
           <p className="mt-1 leading-6 text-amber-800">{explanation}</p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
@@ -304,7 +308,7 @@ function PolicyConflictPanel({
               className="inline-flex items-center gap-2 rounded-xl border border-amber-300 px-3.5 py-2 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100 disabled:opacity-40"
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-              Save as a separate policy anyway
+              Save as a separate entry anyway
             </button>
             <button
               type="button"
@@ -516,7 +520,7 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
   const [editingEntry, setEditingEntry] = useState<KnowledgeRow | null>(null)
   const [editForm, setEditForm] = useState<KnowledgeFormState>(emptyForm)
   const [deleteEntry, setDeleteEntry] = useState<KnowledgeRow | null>(null)
-  const [policyConflict, setPolicyConflict] = useState<PolicyConflictState | null>(null)
+  const [policyConflict, setPolicyConflict] = useState<KnowledgeConflictState | null>(null)
 
   const groupedEntries = useMemo(() => ({
     policy: entries.filter(entry => entry.kind === 'policy'),
@@ -684,24 +688,24 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
     }
   }
 
-  const handleEditConflictingPolicy = async () => {
+  const handleEditConflictingEntry = async () => {
     if (!policyConflict) return
 
     setError(null)
-    let existingPolicy = entries.find(entry => entry.id === policyConflict.conflictsWithId)
+    let existingEntry = entries.find(entry => entry.id === policyConflict.conflictsWithId)
 
-    if (!existingPolicy) {
+    if (!existingEntry) {
       try {
         const rows = await refreshEntries()
-        existingPolicy = rows.find(entry => entry.id === policyConflict.conflictsWithId)
+        existingEntry = rows.find(entry => entry.id === policyConflict.conflictsWithId)
       } catch {
         setError('Could not refresh knowledge entries.')
         return
       }
     }
 
-    if (!existingPolicy) {
-      setError('The existing policy could not be found. Refresh and try again.')
+    if (!existingEntry) {
+      setError('The existing entry could not be found. Refresh and try again.')
       return
     }
 
@@ -709,7 +713,7 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
       setNewForm(emptyForm)
     }
 
-    openEdit(existingPolicy)
+    openEdit(existingEntry)
   }
 
   const handleSaveConflictAnyway = async () => {
@@ -794,9 +798,13 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
     }
   }
 
-  const conflictingPolicyTitle = policyConflict
-    ? entries.find(entry => entry.id === policyConflict.conflictsWithId)?.title ?? 'existing policy'
-    : 'existing policy'
+  const conflictingEntry = policyConflict
+    ? entries.find(entry => entry.id === policyConflict.conflictsWithId)
+    : undefined
+  const conflictingEntryTitle = conflictingEntry?.title ?? 'existing entry'
+  const conflictingEntryKindLabel = conflictingEntry
+    ? conflictingEntry.kind === 'policy' ? 'policy' : kindLabels[conflictingEntry.kind]
+    : null
 
   if (loading) {
     return (
@@ -830,11 +838,12 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
 
         {policyConflict?.pending.mode === 'create' && (
           <div className="mb-5">
-            <PolicyConflictPanel
-              existingTitle={conflictingPolicyTitle}
+            <KnowledgeConflictPanel
+              existingTitle={conflictingEntryTitle}
+              existingKindLabel={conflictingEntryKindLabel}
               explanation={policyConflict.explanation}
               saving={savingNew}
-              onEditExisting={handleEditConflictingPolicy}
+              onEditExisting={handleEditConflictingEntry}
               onSaveAnyway={handleSaveConflictAnyway}
               onCancel={() => setPolicyConflict(null)}
             />
@@ -887,11 +896,12 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
           form={editForm}
           saving={savingEdit}
           conflictPanel={policyConflict?.pending.mode === 'edit' ? (
-            <PolicyConflictPanel
-              existingTitle={conflictingPolicyTitle}
+            <KnowledgeConflictPanel
+              existingTitle={conflictingEntryTitle}
+              existingKindLabel={conflictingEntryKindLabel}
               explanation={policyConflict.explanation}
               saving={savingEdit}
-              onEditExisting={handleEditConflictingPolicy}
+              onEditExisting={handleEditConflictingEntry}
               onSaveAnyway={handleSaveConflictAnyway}
               onCancel={() => setPolicyConflict(null)}
             />
