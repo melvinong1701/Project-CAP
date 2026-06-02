@@ -8,6 +8,7 @@ import {
   shopifyWebhookProductToRow,
   upsertProduct,
 } from '@/lib/shopifyProductSync'
+import { toOrderTotal, upsertShopifyCustomerOrder, type ShopifyOrder } from '@/lib/shopifyOrders'
 import { resolveCustomerIdentity } from '@/lib/identity-resolution'
 import { normalizePhone } from '@/lib/phone'
 
@@ -30,33 +31,21 @@ function verifyWebhookHmac(rawBody: Buffer, hmacHeader: string, secret: string):
   }
 }
 
-interface ShopifyAddress {
-  country_code?: string
-}
-
-interface ShopifyCustomer {
-  first_name?: string
-  last_name?: string
-  email?: string
-  phone?: string
-  default_address?: ShopifyAddress
-}
-
-interface ShopifyOrder {
-  id: number
-  order_number: number
-  customer?: ShopifyCustomer
-  billing_address?: ShopifyAddress
-  total_price: string
-  currency: string
-  created_at: string
-}
-
 interface CustomerRow {
   id: string
   display_name: string | null
   phone: string | null
   last_contact_at: string | null
+}
+
+interface RecordedShopifyOrderRow {
+  id: string
+  customer_id: string
+}
+
+interface RecordedShopifyOrderLookup {
+  order: RecordedShopifyOrderRow | null
+  shouldApplyOrderDelta: boolean
 }
 
 interface StorePlatformOrgRow {
@@ -244,6 +233,11 @@ async function updateProductSyncCount(params: {
 async function handleOrderCreate(params: { order: ShopifyOrder; storeId: string; organizationId: string }) {
   const { order, storeId, organizationId } = params
   const supabase = getSupabase()
+  const recordedOrderLookup = await findRecordedShopifyOrder({
+    supabase,
+    organizationId,
+    externalOrderId: String(order.id),
+  })
 
   const customerName =
     [order.customer?.first_name, order.customer?.last_name].filter(Boolean).join(' ') ||
@@ -267,17 +261,57 @@ async function handleOrderCreate(params: { order: ShopifyOrder; storeId: string;
     lastContactAt: order.created_at,
   })
 
+  let resolvedCustomerId = customerId
   try {
-    await resolveCustomerIdentity({
+    const resolution = await resolveCustomerIdentity({
       supabase,
       organizationId,
       customerId,
       conversationId: null,
       storeId,
       lastContactAt: order.created_at,
+      orderDelta: recordedOrderLookup.shouldApplyOrderDelta
+        ? { count: 1, spend: toOrderTotal(order.total_price) }
+        : undefined,
     })
+    resolvedCustomerId = resolution.customerId
   } catch (err) {
     console.error('Shopify customer identity resolution failed:', err)
+  }
+
+  const orderError = await upsertShopifyCustomerOrder(supabase, {
+    organizationId,
+    storeId,
+    customerId: recordedOrderLookup.order?.customer_id ?? resolvedCustomerId,
+    order,
+  })
+
+  if (orderError) {
+    console.error('Failed to upsert Shopify customer order:', orderError)
+  }
+}
+
+async function findRecordedShopifyOrder(params: {
+  supabase: SupabaseClient
+  organizationId: string
+  externalOrderId: string
+}): Promise<RecordedShopifyOrderLookup> {
+  const { data, error } = await params.supabase
+    .from('customer_orders')
+    .select('id, customer_id')
+    .eq('organization_id', params.organizationId)
+    .eq('channel', 'shopify')
+    .eq('external_order_id', params.externalOrderId)
+    .maybeSingle<RecordedShopifyOrderRow>()
+
+  if (error) {
+    console.error('Failed to check existing Shopify customer order:', error)
+    return { order: null, shouldApplyOrderDelta: false }
+  }
+
+  return {
+    order: data,
+    shouldApplyOrderDelta: !data,
   }
 }
 

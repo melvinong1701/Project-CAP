@@ -18,6 +18,28 @@ interface ContactForm {
 }
 
 type ContactField = keyof ContactForm
+type CustomerOrderStatus = 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'returned'
+
+interface CustomerOrderHistoryOrder {
+  id: string
+  channel: string
+  externalOrderId: string
+  status: CustomerOrderStatus
+  itemsSummary: string | null
+  totalAmount: number
+  currency: string
+  orderPlacedAt: string | null
+  trackingNumber: string | null
+}
+
+interface CustomerOrderHistoryResponse {
+  customer: {
+    totalOrders: number
+    totalSpend: number
+  } | null
+  orders: CustomerOrderHistoryOrder[]
+  error?: string
+}
 
 function customerToForm(customer?: CustomerContact): ContactForm {
   return {
@@ -26,6 +48,37 @@ function customerToForm(customer?: CustomerContact): ContactForm {
     email: customer?.email ?? '',
     notes: customer?.notes ?? '',
   }
+}
+
+function formatMoney(amount: number, currency: string) {
+  return `${currency} ${new Intl.NumberFormat('en-SG', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)}`
+}
+
+function formatOrderDate(value: string | null) {
+  if (!value) return 'Date unavailable'
+  return new Date(value).toLocaleDateString('en-SG', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function formatOrderRef(value: string) {
+  return value.startsWith('#') ? value : `#${value}`
+}
+
+function formatStatus(status: CustomerOrderStatus) {
+  return status.replace('_', ' ').replace(/^\w/, char => char.toUpperCase())
+}
+
+function statusBadgeClass(status: CustomerOrderStatus) {
+  if (status === 'delivered') return 'bg-emerald-50 text-emerald-700'
+  if (status === 'shipped') return 'bg-blue-50 text-blue-700'
+  if (status === 'cancelled' || status === 'returned') return 'bg-rose-50 text-rose-700'
+  return 'bg-amber-50 text-amber-700'
 }
 
 interface ContactFieldEditorProps {
@@ -108,6 +161,9 @@ export function CustomerPanel({ conversation, onUpdateCustomer }: CustomerPanelP
   const [editingField, setEditingField] = useState<ContactField | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [orderHistory, setOrderHistory] = useState<CustomerOrderHistoryResponse | null>(null)
+  const [ordersLoading, setOrdersLoading] = useState(true)
+  const [ordersError, setOrdersError] = useState<string | null>(null)
 
   useEffect(() => {
     setForm(customerToForm(conversation.customer))
@@ -115,7 +171,41 @@ export function CustomerPanel({ conversation, onUpdateCustomer }: CustomerPanelP
     setSaveError('')
   }, [conversation.id, conversation.customer])
 
+  useEffect(() => {
+    let active = true
+    setOrdersLoading(true)
+    setOrdersError(null)
+    setOrderHistory(null)
+
+    fetch(`/api/conversations/${conversation.id}/orders`)
+      .then(async res => {
+        const data = await res.json() as CustomerOrderHistoryResponse
+        if (!res.ok) {
+          throw new Error(data.error ?? 'Failed to load order history')
+        }
+        return data
+      })
+      .then(data => {
+        if (!active) return
+        setOrderHistory({
+          customer: data.customer,
+          orders: data.orders ?? [],
+        })
+      })
+      .catch(() => {
+        if (active) setOrdersError('Failed to load order history')
+      })
+      .finally(() => {
+        if (active) setOrdersLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [conversation.id])
+
   const hasContactDetails = Object.values(form).some(value => value.trim())
+  const orderHistoryCurrency = orderHistory?.orders[0]?.currency ?? 'SGD'
 
   const updateField = (field: ContactField, value: string) => {
     setForm(current => ({ ...current, [field]: value }))
@@ -274,6 +364,59 @@ export function CustomerPanel({ conversation, onUpdateCustomer }: CustomerPanelP
           </div>
         </div>
       )}
+
+      {/* Order History */}
+      <div>
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+          <Package className="w-3.5 h-3.5" />
+          Order History
+        </div>
+        <div className="rounded-xl bg-gray-50 p-3.5">
+          {ordersLoading ? (
+            <div className="flex h-20 items-center justify-center text-gray-400">
+              <Loader2 className="h-4 w-4 animate-spin" />
+            </div>
+          ) : ordersError ? (
+            <p className="py-3 text-xs text-gray-400">{ordersError}</p>
+          ) : (
+            <>
+              {orderHistory?.customer && (
+                <p className="mb-3 text-xs font-medium text-gray-500">
+                  {orderHistory.customer.totalOrders} orders · {formatMoney(orderHistory.customer.totalSpend, orderHistoryCurrency)}
+                </p>
+              )}
+              {orderHistory?.orders.length ? (
+                <div className="space-y-3">
+                  {orderHistory.orders.map(order => (
+                    <div key={order.id} className="border-t border-gray-100 pt-3 first:border-t-0 first:pt-0">
+                      <div className="mb-1.5 flex items-start justify-between gap-2">
+                        <span className="min-w-0 truncate text-xs font-semibold text-gray-800">
+                          {formatOrderRef(order.externalOrderId)}
+                        </span>
+                        <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusBadgeClass(order.status)}`}>
+                          {formatStatus(order.status)}
+                        </span>
+                      </div>
+                      <p className="truncate text-xs font-medium text-gray-700">{order.itemsSummary ?? 'Items unavailable'}</p>
+                      <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-gray-400">
+                        <span>{formatOrderDate(order.orderPlacedAt)}</span>
+                        <span className="font-semibold text-gray-800">{formatMoney(order.totalAmount, order.currency)}</span>
+                      </div>
+                      {order.trackingNumber && (
+                        <p className="mt-1.5 truncate text-xs text-gray-500">
+                          Tracking <span className="font-mono text-indigo-600">{order.trackingNumber}</span>
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="py-3 text-xs text-gray-400">No past orders</p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
 
       {/* Tags */}
       {conversation.tags && conversation.tags.length > 0 && (
