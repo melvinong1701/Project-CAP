@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth, requireOwner } from '@/lib/getOrgId'
+import { generateKnowledgeTags } from '@/lib/generateKnowledgeTags'
 import { checkKnowledgeConflict, type KnowledgeConflictResult } from '@/lib/knowledgeConflictCheck'
 
 type KnowledgeKind = 'policy' | 'faq'
@@ -253,6 +254,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const tags = fields.tags && fields.tags.length > 0
+      ? fields.tags
+      : await generateKnowledgeTags({
+        kind: fields.kind,
+        title: fields.title,
+        body: fields.body,
+      })
+
     const { data, error } = await supabase
       .from('store_knowledge')
       .insert({
@@ -261,7 +270,7 @@ export async function POST(req: NextRequest) {
         kind: fields.kind,
         title: fields.title,
         body: fields.body,
-        tags: fields.tags ?? [],
+        tags,
         is_active: fields.is_active ?? true,
       })
       .select(knowledgeSelect)
