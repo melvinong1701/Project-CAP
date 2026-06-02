@@ -177,6 +177,7 @@ function KnowledgeForm({
   submitLabel,
   saving,
   onCancel,
+  showTags = true,
 }: {
   value: KnowledgeFormState
   onChange: (value: KnowledgeFormState) => void
@@ -184,6 +185,7 @@ function KnowledgeForm({
   submitLabel: string
   saving: boolean
   onCancel?: () => void
+  showTags?: boolean
 }) {
   const canSubmit = value.title.trim().length > 0 && value.body.trim().length > 0 && !saving
 
@@ -226,18 +228,20 @@ function KnowledgeForm({
         />
       </div>
 
-      <div>
-        <label htmlFor={onCancel ? 'knowledge-edit-tags' : 'knowledge-new-tags'} className="mb-1 block text-sm font-medium text-gray-900">
-          Tags
-        </label>
-        <input
-          id={onCancel ? 'knowledge-edit-tags' : 'knowledge-new-tags'}
-          value={value.tags}
-          onChange={event => onChange({ ...value, tags: event.target.value })}
-          className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm placeholder:text-gray-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          placeholder="returns, warranty, shipping"
-        />
-      </div>
+      {showTags && (
+        <div>
+          <label htmlFor={onCancel ? 'knowledge-edit-tags' : 'knowledge-new-tags'} className="mb-1 block text-sm font-medium text-gray-900">
+            Tags
+          </label>
+          <input
+            id={onCancel ? 'knowledge-edit-tags' : 'knowledge-new-tags'}
+            value={value.tags}
+            onChange={event => onChange({ ...value, tags: event.target.value })}
+            className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm placeholder:text-gray-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="returns, warranty, shipping"
+          />
+        </div>
+      )}
 
       <div className="flex items-center justify-end gap-3">
         {onCancel && (
@@ -587,7 +591,7 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
         kind: form.kind,
         title: form.title,
         body: form.body,
-        tags: parseTagInput(form.tags),
+        tags: [],
         acknowledgeConflict: acknowledgeConflict ? true : undefined,
       }),
     })
@@ -834,6 +838,7 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
         <div className="mb-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Add knowledge</p>
           <h2 className="mt-1 text-sm font-semibold text-gray-900">New policy or FAQ</h2>
+          <p className="mt-1 text-xs text-gray-400">Tags are generated automatically and can be edited after saving.</p>
         </div>
 
         {policyConflict?.pending.mode === 'create' && (
@@ -856,6 +861,7 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
           onSubmit={handleCreate}
           submitLabel="Add entry"
           saving={savingNew}
+          showTags={false}
         />
       </div>
 
