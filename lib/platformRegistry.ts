@@ -194,19 +194,19 @@ export const PLATFORMS: PlatformDef[] = [
     label: 'WhatsApp',
     logo: '/logos/whatsapp.svg',
     color: '#25D366',
-    connectAvailable: false,
+    connectAvailable: true,
     capabilities: [
       {
         key: 'messages',
         label: 'Messages',
         description: 'Receive and reply to customer messages',
-        status: 'coming_soon',
+        status: 'active',
       },
       {
         key: 'ai_suggest',
         label: 'AI Suggestions',
         description: 'AI drafts replies for agent review',
-        status: 'coming_soon',
+        status: 'active',
       },
     ],
   },
