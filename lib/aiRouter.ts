@@ -287,7 +287,7 @@ function parseJsonObject(content: string): Record<string, unknown> {
   return parsed
 }
 
-async function callOpenAiJson(params: {
+export async function callOpenAiJson(params: {
   model: string
   system: string
   user: Record<string, unknown>

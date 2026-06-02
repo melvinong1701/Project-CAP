@@ -34,6 +34,28 @@ interface KnowledgeFormState {
   tags: string
 }
 
+interface KnowledgeConflict {
+  conflictsWithId: string
+  explanation: string
+}
+
+interface KnowledgeApiResponse {
+  data?: KnowledgeRow
+  error?: string
+  conflict?: {
+    conflictsWithId?: unknown
+    explanation?: unknown
+  }
+}
+
+type PendingConflictSave =
+  | { mode: 'create'; form: KnowledgeFormState }
+  | { mode: 'edit'; entryId: string; form: KnowledgeFormState }
+
+interface KnowledgeConflictState extends KnowledgeConflict {
+  pending: PendingConflictSave
+}
+
 interface KnowledgeBaseTabProps {
   storeId: string
 }
@@ -71,6 +93,20 @@ function parseTagInput(value: string) {
 
 function formatTags(tags: string[]) {
   return tags.join(', ')
+}
+
+function parseConflictResponse(status: number, json: KnowledgeApiResponse): KnowledgeConflict | null {
+  if (status !== 409 || !json.conflict) return null
+
+  const { conflictsWithId, explanation } = json.conflict
+  if (typeof conflictsWithId !== 'string' || typeof explanation !== 'string') {
+    return null
+  }
+
+  return {
+    conflictsWithId,
+    explanation,
+  }
 }
 
 function formatUpdatedAt(value: string) {
@@ -228,6 +264,67 @@ function KnowledgeForm({
   )
 }
 
+function KnowledgeConflictPanel({
+  existingTitle,
+  existingKindLabel,
+  explanation,
+  saving,
+  onEditExisting,
+  onSaveAnyway,
+  onCancel,
+}: {
+  existingTitle: string
+  existingKindLabel: string | null
+  explanation: string
+  saving: boolean
+  onEditExisting: () => void
+  onSaveAnyway: () => void
+  onCancel: () => void
+}) {
+  const heading = existingKindLabel
+    ? `This may contradict an existing ${existingKindLabel}: ${existingTitle}.`
+    : 'This may contradict an existing entry.'
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      <div className="flex gap-3">
+        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">{heading}</p>
+          <p className="mt-1 leading-6 text-amber-800">{explanation}</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onEditExisting}
+              disabled={saving}
+              className="rounded-xl bg-amber-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-40"
+            >
+              Edit &quot;{existingTitle}&quot; instead
+            </button>
+            <button
+              type="button"
+              onClick={onSaveAnyway}
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-xl border border-amber-300 px-3.5 py-2 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100 disabled:opacity-40"
+            >
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save as a separate entry anyway
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={saving}
+              className="rounded-xl px-3.5 py-2 text-sm font-semibold text-amber-900 transition-colors hover:bg-amber-100 disabled:opacity-40"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function KnowledgeEntryCard({
   entry,
   busy,
@@ -323,12 +420,14 @@ function KnowledgeEntryCard({
 function EditModal({
   form,
   saving,
+  conflictPanel,
   onChange,
   onSave,
   onClose,
 }: {
   form: KnowledgeFormState
   saving: boolean
+  conflictPanel?: React.ReactNode
   onChange: (value: KnowledgeFormState) => void
   onSave: () => void
   onClose: () => void
@@ -352,6 +451,8 @@ function EditModal({
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        {conflictPanel && <div className="mb-5">{conflictPanel}</div>}
 
         <KnowledgeForm
           value={form}
@@ -419,6 +520,7 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
   const [editingEntry, setEditingEntry] = useState<KnowledgeRow | null>(null)
   const [editForm, setEditForm] = useState<KnowledgeFormState>(emptyForm)
   const [deleteEntry, setDeleteEntry] = useState<KnowledgeRow | null>(null)
+  const [policyConflict, setPolicyConflict] = useState<KnowledgeConflictState | null>(null)
 
   const groupedEntries = useMemo(() => ({
     policy: entries.filter(entry => entry.kind === 'policy'),
@@ -462,41 +564,11 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
   const refreshEntries = async () => {
     const rows = await fetchKnowledge(storeId)
     setEntries(rows)
-  }
-
-  const handleCreate = async () => {
-    setSavingNew(true)
-    setError(null)
-
-    try {
-      const res = await fetch('/api/ai/knowledge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeId,
-          kind: newForm.kind,
-          title: newForm.title,
-          body: newForm.body,
-          tags: parseTagInput(newForm.tags),
-        }),
-      })
-      const json = await res.json() as { error?: string }
-
-      if (!res.ok) {
-        throw new Error(json.error ?? 'Failed to create knowledge entry')
-      }
-
-      setNewForm(emptyForm)
-      await refreshEntries()
-      setNotice('Knowledge entry added')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create knowledge entry.')
-    } finally {
-      setSavingNew(false)
-    }
+    return rows
   }
 
   const openEdit = (entry: KnowledgeRow) => {
+    setPolicyConflict(null)
     setEditingEntry(entry)
     setEditForm({
       kind: entry.kind,
@@ -506,6 +578,87 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
     })
   }
 
+  const submitCreate = async (form: KnowledgeFormState, acknowledgeConflict: boolean) => {
+    const res = await fetch('/api/ai/knowledge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        storeId,
+        kind: form.kind,
+        title: form.title,
+        body: form.body,
+        tags: parseTagInput(form.tags),
+        acknowledgeConflict: acknowledgeConflict ? true : undefined,
+      }),
+    })
+    const json = await res.json() as KnowledgeApiResponse
+
+    if (!res.ok) {
+      const conflict = parseConflictResponse(res.status, json)
+      if (conflict) {
+        setPolicyConflict({
+          ...conflict,
+          pending: { mode: 'create', form: { ...form } },
+        })
+        return
+      }
+
+      throw new Error(json.error ?? 'Failed to create knowledge entry')
+    }
+
+    setPolicyConflict(null)
+    setNewForm(emptyForm)
+    await refreshEntries()
+    setNotice('Knowledge entry added')
+  }
+
+  const submitEdit = async (entryId: string, form: KnowledgeFormState, acknowledgeConflict: boolean) => {
+    const res = await fetch('/api/ai/knowledge', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: entryId,
+        kind: form.kind,
+        title: form.title,
+        body: form.body,
+        tags: parseTagInput(form.tags),
+        acknowledgeConflict: acknowledgeConflict ? true : undefined,
+      }),
+    })
+    const json = await res.json() as KnowledgeApiResponse
+
+    if (!res.ok) {
+      const conflict = parseConflictResponse(res.status, json)
+      if (conflict) {
+        setPolicyConflict({
+          ...conflict,
+          pending: { mode: 'edit', entryId, form: { ...form } },
+        })
+        return
+      }
+
+      throw new Error(json.error ?? 'Failed to update knowledge entry')
+    }
+
+    setPolicyConflict(null)
+    setEditingEntry(null)
+    await refreshEntries()
+    setNotice('Knowledge entry saved')
+  }
+
+  const handleCreate = async () => {
+    setSavingNew(true)
+    setError(null)
+
+    try {
+      await submitCreate(newForm, false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create knowledge entry.')
+    } finally {
+      setSavingNew(false)
+    }
+  }
+
   const handleEdit = async () => {
     if (!editingEntry) return
 
@@ -513,26 +666,76 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
     setError(null)
 
     try {
-      const res = await fetch('/api/ai/knowledge', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: editingEntry.id,
-          kind: editForm.kind,
-          title: editForm.title,
-          body: editForm.body,
-          tags: parseTagInput(editForm.tags),
-        }),
-      })
-      const json = await res.json() as { error?: string }
+      await submitEdit(editingEntry.id, editForm, false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update knowledge entry.')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
 
-      if (!res.ok) {
-        throw new Error(json.error ?? 'Failed to update knowledge entry')
+  const handleNewFormChange = (form: KnowledgeFormState) => {
+    setNewForm(form)
+    if (policyConflict?.pending.mode === 'create') {
+      setPolicyConflict(null)
+    }
+  }
+
+  const handleEditFormChange = (form: KnowledgeFormState) => {
+    setEditForm(form)
+    if (policyConflict?.pending.mode === 'edit') {
+      setPolicyConflict(null)
+    }
+  }
+
+  const handleEditConflictingEntry = async () => {
+    if (!policyConflict) return
+
+    setError(null)
+    let existingEntry = entries.find(entry => entry.id === policyConflict.conflictsWithId)
+
+    if (!existingEntry) {
+      try {
+        const rows = await refreshEntries()
+        existingEntry = rows.find(entry => entry.id === policyConflict.conflictsWithId)
+      } catch {
+        setError('Could not refresh knowledge entries.')
+        return
       }
+    }
 
-      setEditingEntry(null)
-      await refreshEntries()
-      setNotice('Knowledge entry saved')
+    if (!existingEntry) {
+      setError('The existing entry could not be found. Refresh and try again.')
+      return
+    }
+
+    if (policyConflict.pending.mode === 'create') {
+      setNewForm(emptyForm)
+    }
+
+    openEdit(existingEntry)
+  }
+
+  const handleSaveConflictAnyway = async () => {
+    if (!policyConflict) return
+
+    setError(null)
+
+    if (policyConflict.pending.mode === 'create') {
+      setSavingNew(true)
+      try {
+        await submitCreate(policyConflict.pending.form, true)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not create knowledge entry.')
+      } finally {
+        setSavingNew(false)
+      }
+      return
+    }
+
+    setSavingEdit(true)
+    try {
+      await submitEdit(policyConflict.pending.entryId, policyConflict.pending.form, true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update knowledge entry.')
     } finally {
@@ -595,6 +798,14 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
     }
   }
 
+  const conflictingEntry = policyConflict
+    ? entries.find(entry => entry.id === policyConflict.conflictsWithId)
+    : undefined
+  const conflictingEntryTitle = conflictingEntry?.title ?? 'existing entry'
+  const conflictingEntryKindLabel = conflictingEntry
+    ? conflictingEntry.kind === 'policy' ? 'policy' : kindLabels[conflictingEntry.kind]
+    : null
+
   if (loading) {
     return (
       <div className="flex h-48 items-center justify-center">
@@ -625,9 +836,23 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
           <h2 className="mt-1 text-sm font-semibold text-gray-900">New policy or FAQ</h2>
         </div>
 
+        {policyConflict?.pending.mode === 'create' && (
+          <div className="mb-5">
+            <KnowledgeConflictPanel
+              existingTitle={conflictingEntryTitle}
+              existingKindLabel={conflictingEntryKindLabel}
+              explanation={policyConflict.explanation}
+              saving={savingNew}
+              onEditExisting={handleEditConflictingEntry}
+              onSaveAnyway={handleSaveConflictAnyway}
+              onCancel={() => setPolicyConflict(null)}
+            />
+          </div>
+        )}
+
         <KnowledgeForm
           value={newForm}
-          onChange={setNewForm}
+          onChange={handleNewFormChange}
           onSubmit={handleCreate}
           submitLabel="Add entry"
           saving={savingNew}
@@ -670,9 +895,25 @@ export default function KnowledgeBaseTab({ storeId }: KnowledgeBaseTabProps) {
         <EditModal
           form={editForm}
           saving={savingEdit}
-          onChange={setEditForm}
+          conflictPanel={policyConflict?.pending.mode === 'edit' ? (
+            <KnowledgeConflictPanel
+              existingTitle={conflictingEntryTitle}
+              existingKindLabel={conflictingEntryKindLabel}
+              explanation={policyConflict.explanation}
+              saving={savingEdit}
+              onEditExisting={handleEditConflictingEntry}
+              onSaveAnyway={handleSaveConflictAnyway}
+              onCancel={() => setPolicyConflict(null)}
+            />
+          ) : undefined}
+          onChange={handleEditFormChange}
           onSave={handleEdit}
-          onClose={() => setEditingEntry(null)}
+          onClose={() => {
+            setEditingEntry(null)
+            if (policyConflict?.pending.mode === 'edit') {
+              setPolicyConflict(null)
+            }
+          }}
         />
       )}
 
