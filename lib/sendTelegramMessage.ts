@@ -1,4 +1,5 @@
 import { type SupabaseClient } from '@supabase/supabase-js'
+import { decryptSecret } from '@/lib/credentialCrypto'
 
 export interface SendTelegramResult {
   ok: boolean
@@ -41,7 +42,7 @@ export async function sendTelegramMessage(
     .eq('platform_id', 'telegram')
     .single()
 
-  const botToken = platform?.bot_token ?? process.env.TELEGRAM_BOT_TOKEN
+  const botToken = decryptSecret(platform?.bot_token ?? null) ?? process.env.TELEGRAM_BOT_TOKEN
 
   if (!botToken) {
     return { ok: false, error: 'No Telegram bot token configured for this store' }

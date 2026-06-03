@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { decryptSecret } from '@/lib/credentialCrypto'
 import { requireAuth } from '@/lib/getOrgId'
 
 export const dynamic = 'force-dynamic'
@@ -117,12 +118,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Shopify connection not found' }, { status: 404 })
     }
 
+    const accessToken = decryptSecret(platform.access_token)
+    if (!accessToken) {
+      return NextResponse.json({ error: 'Shopify connection is missing credentials' }, { status: 500 })
+    }
+
     const gid = `gid://shopify/Order/${conv.external_id}`
     const gqlRes = await fetch(`https://${platform.shopify_domain}/admin/api/2026-04/graphql.json`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': platform.access_token,
+        'X-Shopify-Access-Token': accessToken,
       },
       body: JSON.stringify({
         query: ORDER_QUERY,

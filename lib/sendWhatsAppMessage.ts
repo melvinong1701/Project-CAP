@@ -1,4 +1,5 @@
 import { type SupabaseClient } from '@supabase/supabase-js'
+import { decryptSecret } from '@/lib/credentialCrypto'
 
 export const WHATSAPP_GRAPH_API_BASE_URL = 'https://graph.facebook.com'
 export const WHATSAPP_GRAPH_API_VERSION = 'v21.0'
@@ -72,7 +73,9 @@ export async function sendWhatsAppMessage(
     .eq('platform_id', 'whatsapp')
     .single<StorePlatformRow>()
 
-  if (!platform?.wa_phone_number_id || !platform.wa_access_token) {
+  const accessToken = decryptSecret(platform?.wa_access_token ?? null)
+
+  if (!platform?.wa_phone_number_id || !accessToken) {
     return { ok: false, error: 'No WhatsApp credentials configured for this store' }
   }
 
@@ -83,7 +86,7 @@ export async function sendWhatsAppMessage(
     const graphRes = await fetch(url, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${platform.wa_access_token}`,
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

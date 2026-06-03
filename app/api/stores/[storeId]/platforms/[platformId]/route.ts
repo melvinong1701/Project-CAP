@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { decryptSecret } from '@/lib/credentialCrypto'
 import { requireAuth } from '@/lib/getOrgId'
 
 interface StorePlatformDisconnectRow {
@@ -43,9 +44,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'Platform connection not found' }, { status: 404 })
     }
 
-    if (platformId === 'telegram' && platform.bot_token) {
+    const botToken = decryptSecret(platform.bot_token)
+
+    if (platformId === 'telegram' && botToken) {
       try {
-        await fetch(`https://api.telegram.org/bot${platform.bot_token}/deleteWebhook`, {
+        await fetch(`https://api.telegram.org/bot${botToken}/deleteWebhook`, {
           method: 'POST',
         })
       } catch (err) {

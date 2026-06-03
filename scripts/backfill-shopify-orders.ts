@@ -5,6 +5,7 @@ import {
   shopifyOrderToCustomerOrderRow,
   upsertShopifyCustomerOrder,
 } from '@/lib/shopifyOrders'
+import { decryptSecret } from '@/lib/credentialCrypto'
 import { normalizePhone } from '@/lib/phone'
 
 loadEnvConfig(process.cwd())
@@ -92,14 +93,19 @@ async function discoverStores(supabase: SupabaseClient): Promise<ResolvedStore[]
     throw new Error(`Failed to discover Shopify stores: ${error.message}`)
   }
 
-  return (data ?? [])
-    .filter(row => row.access_token?.trim() && row.shopify_domain?.trim())
-    .map(row => ({
+  return (data ?? []).flatMap(row => {
+    const accessToken = decryptSecret(row.access_token)?.trim()
+    const shopifyDomain = row.shopify_domain?.trim()
+
+    if (!accessToken || !shopifyDomain) return []
+
+    return [{
       storeId: row.store_id,
       organizationId: row.organization_id,
-      accessToken: row.access_token!.trim(),
-      shopifyDomain: cleanShopifyDomain(row.shopify_domain!),
-    }))
+      accessToken,
+      shopifyDomain: cleanShopifyDomain(shopifyDomain),
+    }]
+  })
 }
 
 async function fetchAllOrders(store: ResolvedStore): Promise<ShopifyOrder[]> {
