@@ -8,14 +8,11 @@ const SECRET_COLUMNS = ['bot_token', 'access_token', 'wa_access_token'] as const
 
 type SecretColumn = typeof SECRET_COLUMNS[number]
 
-interface StorePlatformCredentialRow {
+type StorePlatformCredentialRow = {
   id: string
-  bot_token: string | null
-  access_token: string | null
-  wa_access_token: string | null
-}
+} & Partial<Record<SecretColumn, string | null>>
 
-type SecretColumnCounts = Record<SecretColumn, number>
+type SecretColumnCounts = Partial<Record<SecretColumn, number>>
 type SecretColumnUpdates = Partial<Record<SecretColumn, string>>
 
 const allowedFlags = new Set(['--dry-run', '--help'])
@@ -47,10 +44,50 @@ function getSupabase() {
   })
 }
 
-async function fetchCredentialRows(supabase: SupabaseClient): Promise<StorePlatformCredentialRow[]> {
+function isMissingColumnError(error: { code?: string; message: string }) {
+  const message = error.message.toLowerCase()
+
+  return error.code === '42703'
+    || error.code === 'PGRST204'
+    || (message.includes('column') && message.includes('does not exist'))
+    || (message.includes('could not find') && message.includes('column'))
+}
+
+async function secretColumnExists(supabase: SupabaseClient, column: SecretColumn) {
+  const { error } = await supabase
+    .from('store_platforms')
+    .select(column)
+    .limit(0)
+
+  if (!error) return true
+  if (isMissingColumnError(error)) return false
+
+  throw new Error(`Failed to check store_platforms.${column}: ${error.message}`)
+}
+
+async function getActiveSecretColumns(supabase: SupabaseClient): Promise<SecretColumn[]> {
+  const activeColumns: SecretColumn[] = []
+
+  for (const column of SECRET_COLUMNS) {
+    if (await secretColumnExists(supabase, column)) {
+      activeColumns.push(column)
+      continue
+    }
+
+    console.log(`Skipping ${column} (column not present in store_platforms)`)
+  }
+
+  return activeColumns
+}
+
+async function fetchCredentialRows(
+  supabase: SupabaseClient,
+  activeColumns: readonly SecretColumn[],
+): Promise<StorePlatformCredentialRow[]> {
+  const selectColumns = ['id', ...activeColumns].join(', ')
   const { data, error } = await supabase
     .from('store_platforms')
-    .select('id, bot_token, access_token, wa_access_token')
+    .select(selectColumns)
     .returns<StorePlatformCredentialRow[]>()
 
   if (error) {
@@ -60,32 +97,29 @@ async function fetchCredentialRows(supabase: SupabaseClient): Promise<StorePlatf
   return data ?? []
 }
 
-function createEmptyCounts(): SecretColumnCounts {
-  return {
-    bot_token: 0,
-    access_token: 0,
-    wa_access_token: 0,
-  }
+function createEmptyCounts(activeColumns: readonly SecretColumn[]): SecretColumnCounts {
+  return Object.fromEntries(activeColumns.map(column => [column, 0])) as SecretColumnCounts
 }
 
-function shouldEncrypt(value: string | null): value is string {
-  return value !== null && !value.startsWith(ENCRYPTED_SECRET_PREFIX)
+function shouldEncrypt(value: string | null | undefined): value is string {
+  return typeof value === 'string' && !value.startsWith(ENCRYPTED_SECRET_PREFIX)
 }
 
 async function backfillCredentials(supabase: SupabaseClient) {
-  const rows = await fetchCredentialRows(supabase)
-  const counts = createEmptyCounts()
+  const activeColumns = await getActiveSecretColumns(supabase)
+  const rows = await fetchCredentialRows(supabase, activeColumns)
+  const counts = createEmptyCounts(activeColumns)
   let rowsChanged = 0
 
   for (const row of rows) {
     const updates: SecretColumnUpdates = {}
     let rowHasChanges = false
 
-    for (const column of SECRET_COLUMNS) {
+    for (const column of activeColumns) {
       const value = row[column]
       if (!shouldEncrypt(value)) continue
 
-      counts[column] += 1
+      counts[column] = (counts[column] ?? 0) + 1
       rowHasChanges = true
 
       if (!dryRun) {
@@ -108,7 +142,7 @@ async function backfillCredentials(supabase: SupabaseClient) {
     }
   }
 
-  return { rowsScanned: rows.length, rowsChanged, counts }
+  return { rowsScanned: rows.length, rowsChanged, counts, activeColumns }
 }
 
 function printUsage() {
@@ -126,7 +160,7 @@ function printCounts(result: Awaited<ReturnType<typeof backfillCredentials>>) {
   console.log(`Rows scanned: ${result.rowsScanned}`)
   console.log(`${dryRun ? 'Rows that would change' : 'Rows changed'}: ${result.rowsChanged}`)
 
-  for (const column of SECRET_COLUMNS) {
+  for (const column of result.activeColumns) {
     console.log(`${column}: ${result.counts[column]}`)
   }
 }
