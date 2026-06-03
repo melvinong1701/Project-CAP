@@ -1,7 +1,14 @@
 import { Channel } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-const channelConfig: Record<Channel, { label: string; color: string; bg: string; icon: string }> = {
+interface ChannelBadgeConfig {
+  label: string
+  color: string
+  bg: string
+  icon: string
+}
+
+const channelConfig: Record<Channel, ChannelBadgeConfig> = {
   telegram: { label: 'Telegram', color: 'text-blue-600', bg: 'bg-blue-50', icon: '✈' },
   shopify: { label: 'Shopify', color: 'text-emerald-700', bg: 'bg-emerald-50', icon: 'S' },
   shopee: { label: 'Shopee', color: 'text-orange-600', bg: 'bg-orange-50', icon: '🛍' },
@@ -13,14 +20,27 @@ const channelConfig: Record<Channel, { label: string; color: string; bg: string;
 }
 
 interface ChannelBadgeProps {
-  channel: Channel
+  channel: Channel | string
   showLabel?: boolean
   size?: 'sm' | 'md'
   className?: string
 }
 
+function getFallbackConfig(channel: string): ChannelBadgeConfig {
+  const label = channel
+    ? channel.split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+    : 'Unknown'
+
+  return {
+    label,
+    color: 'text-gray-600',
+    bg: 'bg-gray-100',
+    icon: label.charAt(0).toUpperCase() || '?',
+  }
+}
+
 export function ChannelBadge({ channel, showLabel = false, size = 'sm', className }: ChannelBadgeProps) {
-  const config = channelConfig[channel]
+  const config = channelConfig[channel as Channel] ?? getFallbackConfig(channel)
   return (
     <span
       className={cn(

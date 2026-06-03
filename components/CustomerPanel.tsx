@@ -1,9 +1,9 @@
 'use client'
 
 import { KeyboardEvent, useEffect, useState } from 'react'
-import { Conversation, CustomerContact } from '@/lib/types'
+import { Channel, Conversation, CustomerContact } from '@/lib/types'
 import { ChannelBadge } from './ChannelBadge'
-import { Contact, Loader2, Package, Tag, User } from 'lucide-react'
+import { Check, Contact, Copy, Loader2, Package, Tag, User } from 'lucide-react'
 
 interface CustomerPanelProps {
   conversation: Conversation
@@ -19,11 +19,13 @@ interface ContactForm {
 
 type ContactField = keyof ContactForm
 type CustomerOrderStatus = 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'returned'
+type CustomerOrderChannel = Extract<Channel, 'shopify' | 'shopee' | 'lazada' | 'tiktok_shop'>
 
 interface CustomerOrderHistoryOrder {
   id: string
-  channel: string
+  channel: CustomerOrderChannel
   externalOrderId: string
+  orderReference: string | null
   status: CustomerOrderStatus
   itemsSummary: string | null
   totalAmount: number
@@ -164,6 +166,7 @@ export function CustomerPanel({ conversation, onUpdateCustomer }: CustomerPanelP
   const [orderHistory, setOrderHistory] = useState<CustomerOrderHistoryResponse | null>(null)
   const [ordersLoading, setOrdersLoading] = useState(true)
   const [ordersError, setOrdersError] = useState<string | null>(null)
+  const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null)
 
   useEffect(() => {
     setForm(customerToForm(conversation.customer))
@@ -236,6 +239,18 @@ export function CustomerPanel({ conversation, onUpdateCustomer }: CustomerPanelP
       setSaveError('Could not save contact')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const copyOrderReference = async (order: CustomerOrderHistoryOrder) => {
+    try {
+      await navigator.clipboard.writeText(order.orderReference ?? order.externalOrderId)
+      setCopiedOrderId(order.id)
+      window.setTimeout(() => {
+        setCopiedOrderId(current => current === order.id ? null : current)
+      }, 1500)
+    } catch {
+      // Clipboard can fail outside secure browser contexts; keep the panel quiet.
     }
   }
 
@@ -390,12 +405,29 @@ export function CustomerPanel({ conversation, onUpdateCustomer }: CustomerPanelP
                   {orderHistory.orders.map(order => (
                     <div key={order.id} className="border-t border-gray-100 pt-3 first:border-t-0 first:pt-0">
                       <div className="mb-1.5 flex items-start justify-between gap-2">
-                        <span className="min-w-0 truncate text-xs font-semibold text-gray-800">
-                          {formatOrderRef(order.externalOrderId)}
-                        </span>
-                        <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusBadgeClass(order.status)}`}>
-                          {formatStatus(order.status)}
-                        </span>
+                        <div className="min-w-0">
+                          <span className="block truncate text-xs font-semibold text-gray-800">
+                            {order.orderReference ?? formatOrderRef(order.externalOrderId)}
+                          </span>
+                          <ChannelBadge channel={order.channel} showLabel className="mt-1 text-[10px]" />
+                        </div>
+                        <div className="flex flex-shrink-0 items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => copyOrderReference(order)}
+                            aria-label="Copy order number"
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-300 transition hover:bg-white hover:text-gray-600"
+                          >
+                            {copiedOrderId === order.id ? (
+                              <Check className="h-3.5 w-3.5 text-emerald-500" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusBadgeClass(order.status)}`}>
+                            {formatStatus(order.status)}
+                          </span>
+                        </div>
                       </div>
                       <p className="truncate text-xs font-medium text-gray-700">{order.itemsSummary ?? 'Items unavailable'}</p>
                       <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-gray-400">

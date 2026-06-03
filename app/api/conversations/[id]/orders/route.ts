@@ -22,6 +22,7 @@ interface OrderRow {
   id: string
   channel: string
   external_order_id: string
+  order_reference: string | null
   status: string
   items_summary: string | null
   total_amount: number | string | null
@@ -71,7 +72,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         .maybeSingle<CustomerRow>(),
       supabase
         .from('customer_orders')
-        .select('id, channel, external_order_id, status, items_summary, total_amount, currency, order_placed_at, tracking_number')
+        .select('id, channel, external_order_id, order_reference, status, items_summary, total_amount, currency, order_placed_at, tracking_number')
         .eq('organization_id', ctx.organizationId)
         .eq('customer_id', conversation.customer_id)
         .order('order_placed_at', { ascending: false, nullsFirst: false })
@@ -100,6 +101,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
         id: order.id,
         channel: order.channel,
         externalOrderId: order.external_order_id,
+        orderReference: order.order_reference,
         status: order.status,
         itemsSummary: order.items_summary,
         totalAmount: toNumber(order.total_amount),

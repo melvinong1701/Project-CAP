@@ -29,6 +29,7 @@ export interface ShopifyFulfillment {
 
 export interface ShopifyOrder {
   id: number | string
+  name?: string
   order_number?: number
   customer?: ShopifyOrderCustomer
   billing_address?: ShopifyOrderAddress
@@ -57,6 +58,7 @@ export function shopifyOrderToCustomerOrderRow(params: {
     store_id: storeId,
     channel: 'shopify',
     external_order_id: String(order.id),
+    order_reference: order.name ?? (order.order_number != null ? `#${order.order_number}` : null),
     status: mapShopifyOrderStatus(order),
     items_summary: summarizeOrderItems(order.line_items),
     total_amount: toOrderTotal(order.total_price),
