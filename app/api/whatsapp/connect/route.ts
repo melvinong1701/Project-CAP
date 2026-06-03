@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { encryptSecret } from '@/lib/credentialCrypto'
 import { requireAuth } from '@/lib/getOrgId'
 import { WHATSAPP_GRAPH_API_BASE_URL, WHATSAPP_GRAPH_API_VERSION } from '@/lib/sendWhatsAppMessage'
 
@@ -107,7 +108,7 @@ export async function POST(req: NextRequest) {
           platform_id: 'whatsapp',
           account_label: accountLabel,
           wa_phone_number_id: trimmedPhoneNumberId,
-          wa_access_token: trimmedAccessToken,
+          wa_access_token: encryptSecret(trimmedAccessToken),
         },
         { onConflict: 'store_id,platform_id' }
       )

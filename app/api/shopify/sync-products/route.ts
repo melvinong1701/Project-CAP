@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { decryptSecret } from '@/lib/credentialCrypto'
 import { requireAuth } from '@/lib/getOrgId'
 import { ShopifyGraphqlProduct, shopifyProductToRow } from '@/lib/shopifyProductSync'
 
@@ -166,6 +167,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Shopify connection not found' }, { status: 404 })
     }
 
+    const accessToken = decryptSecret(platform.access_token)
+    if (!accessToken) {
+      return NextResponse.json({ error: 'Shopify connection is missing credentials' }, { status: 500 })
+    }
+
     let cursor: string | null = null
     let totalSynced = 0
 
@@ -181,7 +187,7 @@ export async function POST(req: NextRequest) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Shopify-Access-Token': platform.access_token,
+          'X-Shopify-Access-Token': accessToken,
         },
         body: JSON.stringify({
           query: PRODUCTS_QUERY,

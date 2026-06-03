@@ -1,13 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
+import { requireAuth } from '@/lib/getOrgId'
 
 const SCOPES = 'read_orders,read_customers,read_products'
+
+interface StoreRow {
+  organization_id: string
+}
+
+function getSupabase() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Supabase credentials not configured')
+  }
+  return createClient(supabaseUrl, supabaseKey)
+}
 
 function isValidShopDomain(shop: string) {
   return /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop)
 }
 
 export async function GET(req: NextRequest) {
+  const ctx = await requireAuth()
+  if (ctx instanceof NextResponse) return ctx
+
   const { searchParams } = new URL(req.url)
   const shop = searchParams.get('shop')
   const storeId = searchParams.get('storeId')
@@ -18,6 +36,18 @@ export async function GET(req: NextRequest) {
 
   if (!isValidShopDomain(shop)) {
     return NextResponse.json({ error: 'Invalid shop domain' }, { status: 400 })
+  }
+
+  const supabase = getSupabase()
+  const { data: store, error: storeErr } = await supabase
+    .from('stores')
+    .select('organization_id')
+    .eq('id', storeId)
+    .eq('organization_id', ctx.organizationId)
+    .single<StoreRow>()
+
+  if (storeErr || !store) {
+    return NextResponse.json({ error: 'Store not found' }, { status: 404 })
   }
 
   const clientId = process.env.SHOPIFY_CLIENT_ID

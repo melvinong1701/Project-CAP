@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { decryptSecret } from '@/lib/credentialCrypto'
 import { requireAuth } from '@/lib/getOrgId'
 import { SHOPIFY_WEBHOOK_TOPICS, registerShopifyWebhook } from '@/lib/shopifyWebhooks'
 
@@ -54,7 +55,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Shopify not connected for this store' }, { status: 404 })
     }
 
-    if (!platform.shopify_domain || !platform.access_token) {
+    const accessToken = decryptSecret(platform.access_token)
+
+    if (!platform.shopify_domain || !accessToken) {
       return NextResponse.json({ error: 'Shopify connection is missing credentials' }, { status: 500 })
     }
 
@@ -62,7 +65,7 @@ export async function POST(req: NextRequest) {
     for (const topic of SHOPIFY_WEBHOOK_TOPICS) {
       await registerShopifyWebhook({
         shop: platform.shopify_domain,
-        accessToken: platform.access_token,
+        accessToken,
         topic,
         webhookUrl,
       })

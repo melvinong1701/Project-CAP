@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
+import { encryptSecret } from '@/lib/credentialCrypto'
 import { SHOPIFY_WEBHOOK_TOPICS, registerShopifyWebhook } from '@/lib/shopifyWebhooks'
 
-// TODO: replace this with organization_id from a signed OAuth state once Shopify install starts from an authenticated store settings flow.
-const ORG_ID = '00000000-0000-0000-0000-000000000001'
-
 export const dynamic = 'force-dynamic'
+
+interface StoreRow {
+  organization_id: string
+}
 
 function getSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -105,15 +107,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
     }
 
+    const { data: store, error: storeErr } = await supabase
+      .from('stores')
+      .select('organization_id')
+      .eq('id', storeId)
+      .single<StoreRow>()
+
+    if (storeErr || !store) {
+      console.error('Shopify callback: store not found for storeId', { storeId })
+      return NextResponse.json({ error: 'Store not found' }, { status: 404 })
+    }
+    const organizationId = store.organization_id
+
     const { error: dbErr } = await supabase
       .from('store_platforms')
       .upsert(
         {
           store_id: storeId,
-          organization_id: ORG_ID,
+          organization_id: organizationId,
           platform_id: 'shopify',
           account_label: shop,
-          access_token: accessToken,
+          access_token: encryptSecret(accessToken),
           shopify_domain: shop,
         },
         { onConflict: 'store_id,platform_id' }
