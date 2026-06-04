@@ -39,6 +39,7 @@ const SOURCE_LABELS: Record<string, string> = {
   custom_instructions: 'Store instructions',
   product_catalog: 'Product catalogue',
   knowledge_base: 'Knowledge base',
+  order_history: 'Order history',
 }
 
 export function AiSuggestionPanel({

@@ -3,10 +3,12 @@ import {
   type AiIntent,
   type PreprocessingResult,
   type RetrievedContextSnippet,
+  type RetrievedContextSource,
 } from '@/lib/aiRouter'
 
 export const KNOWLEDGE_INTENTS = new Set<AiIntent>(['shipping', 'returns', 'other'])
 
+const KNOWLEDGE_CONTEXT_SOURCE: RetrievedContextSource = 'knowledge_base'
 const MAX_KNOWLEDGE_SEARCH_QUERY_LENGTH = 240
 const KNOWLEDGE_SEARCH_LIMIT = 5
 
@@ -45,7 +47,7 @@ export async function fetchKnowledgeContext(
     ]
       .filter(Boolean)
       .join('. '),
-    source: 'knowledge_base',
+    source: KNOWLEDGE_CONTEXT_SOURCE,
   }))
 }
 

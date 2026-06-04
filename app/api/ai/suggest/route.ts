@@ -18,8 +18,7 @@ import {
   downgradeForAmbiguity,
   isConfidenceCalibrationShadowMode,
 } from '@/lib/autoSend'
-import { CATALOG_INTENTS, buildCatalogSearchQuery, fetchCatalogContext } from '@/lib/catalogRetrieval'
-import { KNOWLEDGE_INTENTS, buildKnowledgeSearchQuery, fetchKnowledgeContext } from '@/lib/knowledgeRetrieval'
+import { assembleGroundingContext } from '@/lib/grounding'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +31,7 @@ interface SuggestRequestBody {
 interface ConversationRow {
   id: string
   store_id: string | null
+  customer_id: string | null
   channel: Channel
   sender_name: string | null
   last_message: string | null
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
     if (body.conversationId) {
       const { data: conv, error: convErr } = await supabase
         .from('conversations')
-        .select('id, store_id, channel, sender_name, last_message')
+        .select('id, store_id, customer_id, channel, sender_name, last_message')
         .eq('id', body.conversationId)
         .eq('organization_id', ORG_ID)
         .single()
@@ -189,33 +189,16 @@ export async function POST(req: NextRequest) {
       storeConfig,
     })
 
-    const providedContext: RetrievedContextSnippet[] = body.retrievedContext ?? []
-    let catalogContext: RetrievedContextSnippet[] = providedContext.length > 0 && CATALOG_INTENTS.has(preprocessing.intent)
-      ? providedContext
-      : []
-    let knowledgeContext: RetrievedContextSnippet[] = providedContext.length > 0 && KNOWLEDGE_INTENTS.has(preprocessing.intent)
-      ? providedContext
-      : []
-    if (
-      providedContext.length === 0 &&
-      conversation?.store_id &&
-      CATALOG_INTENTS.has(preprocessing.intent)
-    ) {
-      const searchQuery = buildCatalogSearchQuery(preprocessing, latestMessage, history)
-      catalogContext = await fetchCatalogContext(supabase, ORG_ID, conversation.store_id, searchQuery)
-    }
-    if (
-      providedContext.length === 0 &&
-      conversation?.store_id &&
-      KNOWLEDGE_INTENTS.has(preprocessing.intent)
-    ) {
-      const searchQuery = buildKnowledgeSearchQuery(preprocessing, latestMessage)
-      knowledgeContext = await fetchKnowledgeContext(supabase, ORG_ID, conversation.store_id, searchQuery)
-    }
-
-    const retrievedContext = providedContext.length > 0
-      ? providedContext
-      : [...catalogContext, ...knowledgeContext]
+    const grounding = await assembleGroundingContext({
+      supabase,
+      organizationId: ORG_ID,
+      storeId: conversation?.store_id ?? null,
+      customerId: conversation?.customer_id ?? null,
+      preprocessing,
+      latestMessage,
+      history,
+      providedContext: body.retrievedContext,
+    })
 
     const suggestInput: SuggestReplyInput = {
       organizationId: ORG_ID,
@@ -226,18 +209,18 @@ export async function POST(req: NextRequest) {
         ? currentBlock.slice(-5).map(message => message.content)
         : undefined,
       conversationHistory: history,
-      retrievedContext,
+      retrievedContext: grounding.snippets,
       storeConfig,
     }
 
     const result = await suggestReply(suggestInput, preprocessing)
-    const effectiveConfidence = downgradeForAmbiguity(result.confidence, catalogContext.length, preprocessing.intent)
+    const effectiveConfidence = downgradeForAmbiguity(result.confidence, grounding.catalogMatchCount, preprocessing.intent)
     const calibration = calibrateConfidence({
       confidence: effectiveConfidence,
       intent: preprocessing.intent,
       shouldEscalate: preprocessing.shouldEscalate,
       sourceCited: result.sourceCited ?? null,
-      catalogMatchCount: catalogContext.length,
+      catalogMatchCount: grounding.catalogMatchCount,
       text: result.text,
     })
     const shadowMode = isConfidenceCalibrationShadowMode()
@@ -280,8 +263,9 @@ export async function POST(req: NextRequest) {
       wouldAutoSend,
       didAutoSend,
       sourceCited: result.sourceCited ?? null,
-      catalogMatchCount: catalogContext.length,
-      knowledgeMatchCount: knowledgeContext.length,
+      catalogMatchCount: grounding.catalogMatchCount,
+      knowledgeMatchCount: grounding.knowledgeMatchCount,
+      orderMatchCount: grounding.orderMatchCount,
       blockedReason: calibration.blockedReason,
     }))
 

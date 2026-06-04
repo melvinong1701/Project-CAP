@@ -4,10 +4,12 @@ import {
   type ConversationContextMessage,
   type PreprocessingResult,
   type RetrievedContextSnippet,
+  type RetrievedContextSource,
 } from '@/lib/aiRouter'
 
 export const CATALOG_INTENTS = new Set<AiIntent>(['product_question', 'pricing', 'availability'])
 
+const CATALOG_CONTEXT_SOURCE: RetrievedContextSource = 'product_catalog'
 const MAX_CATALOG_SEARCH_QUERY_LENGTH = 240
 const MAX_CATALOG_CARRY_QUERY_LENGTH = 120
 const CATALOG_SEARCH_LIMIT = 8
@@ -155,7 +157,7 @@ export async function fetchCatalogContext(
     return {
       title: product.title,
       content,
-      source: 'product_catalog',
+      source: CATALOG_CONTEXT_SOURCE,
     }
   })
 }

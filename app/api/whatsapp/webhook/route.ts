@@ -5,7 +5,6 @@ import {
   suggestReply,
   type ConversationContextMessage,
   type PreprocessingResult,
-  type RetrievedContextSnippet,
   type StoreConfig,
   type SuggestReplyInput,
 } from '@/lib/aiRouter'
@@ -15,8 +14,7 @@ import {
   downgradeForAmbiguity,
   isConfidenceCalibrationShadowMode,
 } from '@/lib/autoSend'
-import { CATALOG_INTENTS, buildCatalogSearchQuery, fetchCatalogContext } from '@/lib/catalogRetrieval'
-import { KNOWLEDGE_INTENTS, buildKnowledgeSearchQuery, fetchKnowledgeContext } from '@/lib/knowledgeRetrieval'
+import { assembleGroundingContext } from '@/lib/grounding'
 import { sendWhatsAppMessage } from '@/lib/sendWhatsAppMessage'
 
 function getSupabase() {
@@ -142,9 +140,9 @@ async function linkWhatsAppCustomer(params: {
   customerId: string | null
   whatsappId: string
   senderName: string
-}) {
+}): Promise<string | null> {
   if (params.customerId) {
-    return
+    return params.customerId
   }
 
   const { data: customer, error: customerErr } = await params.supabase
@@ -162,7 +160,7 @@ async function linkWhatsAppCustomer(params: {
 
   if (customerErr || !customer) {
     console.error('Failed to upsert WhatsApp customer:', customerErr)
-    return
+    return null
   }
 
   const { error: linkErr } = await params.supabase
@@ -174,6 +172,8 @@ async function linkWhatsAppCustomer(params: {
   if (linkErr) {
     console.error('Failed to link WhatsApp customer:', linkErr)
   }
+
+  return customer.id
 }
 
 async function triggerAiSuggestion(params: {
@@ -181,6 +181,7 @@ async function triggerAiSuggestion(params: {
   organizationId: string
   conversationId: string
   storeId: string | null
+  customerId: string | null
   latestMessage: string
   senderName: string
 }) {
@@ -239,30 +240,27 @@ async function triggerAiSuggestion(params: {
     }
 
     const preprocessing: PreprocessingResult = await preprocessMessage(suggestInput)
-    let catalogContext: RetrievedContextSnippet[] = []
-    let knowledgeContext: RetrievedContextSnippet[] = []
-    if (params.storeId && CATALOG_INTENTS.has(preprocessing.intent)) {
-      const searchQuery = buildCatalogSearchQuery(preprocessing, params.latestMessage, history)
-      catalogContext = await fetchCatalogContext(params.supabase, params.organizationId, params.storeId, searchQuery)
-    }
-    if (params.storeId && KNOWLEDGE_INTENTS.has(preprocessing.intent)) {
-      const searchQuery = buildKnowledgeSearchQuery(preprocessing, params.latestMessage)
-      knowledgeContext = await fetchKnowledgeContext(params.supabase, params.organizationId, params.storeId, searchQuery)
-    }
-
-    const retrievedContext = [...catalogContext, ...knowledgeContext]
+    const grounding = await assembleGroundingContext({
+      supabase: params.supabase,
+      organizationId: params.organizationId,
+      storeId: params.storeId,
+      customerId: params.customerId,
+      preprocessing,
+      latestMessage: params.latestMessage,
+      history,
+    })
 
     const result = await suggestReply({
       ...suggestInput,
-      retrievedContext,
+      retrievedContext: grounding.snippets,
     }, preprocessing)
-    const effectiveConfidence = downgradeForAmbiguity(result.confidence, catalogContext.length, preprocessing.intent)
+    const effectiveConfidence = downgradeForAmbiguity(result.confidence, grounding.catalogMatchCount, preprocessing.intent)
     const calibration = calibrateConfidence({
       confidence: effectiveConfidence,
       intent: preprocessing.intent,
       shouldEscalate: preprocessing.shouldEscalate,
       sourceCited: result.sourceCited ?? null,
-      catalogMatchCount: catalogContext.length,
+      catalogMatchCount: grounding.catalogMatchCount,
       text: result.text,
     })
     const shadowMode = isConfidenceCalibrationShadowMode()
@@ -304,8 +302,9 @@ async function triggerAiSuggestion(params: {
       wouldAutoSend,
       didAutoSend,
       sourceCited: result.sourceCited ?? null,
-      catalogMatchCount: catalogContext.length,
-      knowledgeMatchCount: knowledgeContext.length,
+      catalogMatchCount: grounding.catalogMatchCount,
+      knowledgeMatchCount: grounding.knowledgeMatchCount,
+      orderMatchCount: grounding.orderMatchCount,
       blockedReason: calibration.blockedReason,
     }))
 
@@ -448,7 +447,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ ok: false }, { status: 500 })
         }
 
-        await linkWhatsAppCustomer({
+        const customerId = await linkWhatsAppCustomer({
           supabase,
           organizationId: ORG_ID,
           conversationId: conv.id,
@@ -490,6 +489,7 @@ export async function POST(req: NextRequest) {
             organizationId: ORG_ID,
             conversationId: conv.id,
             storeId: storeRow.store_id,
+            customerId,
             latestMessage: text,
             senderName,
           })
