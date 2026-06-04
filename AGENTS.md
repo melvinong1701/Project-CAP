@@ -4,6 +4,8 @@ You are the CTO-agent for **Project CAP**. You build and review code for this pr
 
 Be direct. No filler. When you finish a task, summarise what you built, what files you changed, any assumption you made that wasn't in the spec, and any follow-up the next sprint should pick up.
 
+> **Read `CONTEXT.md` (repo root) first, every task.** It is the newest source of truth for what's actually built, what's in flight, and what to work on — and it **wins on any conflict** with this file. `AGENTS.md` holds the *stable* standards (architecture, adapter pattern, normalised types, review checklist); `CONTEXT.md` holds the *fast-moving* state. If `CONTEXT.md` is not present in your checkout, say so in your task summary — you are likely missing current context.
+
 ---
 
 ## Coding behaviour
@@ -35,13 +37,13 @@ Target market: Singapore + Malaysia first. Language support required from Day 1:
 | Layer | Choice |
 |---|---|
 | Frontend | Next.js 14 (App Router) + React + Tailwind CSS + shadcn/ui |
-| Backend | Next.js API Routes + separate worker process |
+| Backend | Next.js API Routes (no separate worker process — everything runs on Vercel) |
 | Database | PostgreSQL via Supabase |
 | Cache / Queue | Redis via Upstash |
 | AI | OpenAI API with two-queue model routing |
 | Auth | Supabase Auth (`@supabase/ssr`) — RBAC via `user_profiles.role` (`owner` / `agent`); org context via `lib/getOrgId.ts` |
 | File storage | Cloudflare R2 |
-| Deploy | Vercel (frontend) + Railway (workers) |
+| Deploy | **Vercel only** — frontend, API routes, webhooks, and the AI queue all run on Vercel. No Railway; there is no separate worker tier. |
 
 Do not introduce new libraries or infrastructure without flagging it in your task summary. Stick to the stack above.
 
@@ -64,21 +66,18 @@ API Gateway (Next.js API Routes + Supabase Auth)
    ↓
 Data layer: Postgres + Redis + R2
    ↓
-Background workers (polling, webhooks, AI queue)
+Webhooks + AI queue: Next.js API routes on Vercel (no separate worker tier)
 ```
 
 ---
 
 ## Current state
 
-- Inbox is live against Supabase (`conversations`, `messages`, `customers`, `stores`, `store_platforms`, `user_profiles`, `organizations`)
-- Auth + RBAC live — Supabase Auth, `owner` / `agent` roles enforced in `lib/getOrgId.ts`
-- Telegram adapter complete: webhook → message persistence, outbound send, per-store connect/disconnect
-- Shopify adapter Phase 1: OAuth install/callback + `orders/create` webhook. Phase 2 (replies, catalogue sync) not built
-- AI suggestion loop live: Queue 1 (`gpt-5.4-nano` preprocessing, cached on conversation row) + Queue 2 (`gpt-5.4-mini` reply or `gpt-5.4` escalation)
-- Customer identity-resolution live: per-store dedupe, merge suggestions, manual merge
-- Shopee / Lazada / TikTok Shop chat-API access still pending (per-seller developer-app workaround needed for Shopee + Lazada)
+**Do not trust a static list here — it drifts.** The authoritative, continuously-updated current state (what's built, what's in flight, gotchas, priorities) lives in **`CONTEXT.md`** at the repo root. Read it before starting any task. (The hard-coded bullets that used to live here went stale — e.g. they claimed "Shopify Phase 2 not built" long after catalogue sync, RAG, KB, RLS, and the WhatsApp adapter shipped.)
+
+Durable facts that rarely change:
 - Supabase project ID: `eoyolzalpwjakjdgdgck`
+- Multi-tenancy, auth/RBAC, the channel-adapter pattern, AI model routing, and the review checklist are documented in the sections below.
 
 ---
 
