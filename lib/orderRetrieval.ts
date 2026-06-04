@@ -5,7 +5,7 @@ import {
   type RetrievedContextSource,
 } from '@/lib/aiRouter'
 
-export const ORDER_INTENTS = new Set<AiIntent>(['order_status'])
+export const ORDER_INTENTS = new Set<AiIntent>(['order_status', 'shipping'])
 
 const ORDER_CONTEXT_LIMIT = 5
 const ORDER_CONTEXT_SOURCE: RetrievedContextSource = 'order_history'
