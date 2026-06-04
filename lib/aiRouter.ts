@@ -69,6 +69,8 @@ export interface PreprocessingResult {
   tags: string[]
   shouldEscalate: boolean
   escalationReason: string | null
+  // DEBUG (temporary): raw pre-coercion intent string emitted by the classifier.
+  rawIntent?: string
 }
 
 export interface SuggestReplyResult {
@@ -390,13 +392,17 @@ export async function preprocessMessage(input: SuggestReplyInput): Promise<Prepr
     maxCompletionTokens: 300,
   })
 
-  return buildPreprocessingResult({
-    language: asString(raw.language, 'unknown'),
-    intent: asIntent(raw.intent),
-    sentiment: asSentiment(raw.sentiment),
-    urgency: asUrgency(raw.urgency),
-    tags: asStringArray(raw.tags).slice(0, 5),
-  })
+  return {
+    ...buildPreprocessingResult({
+      language: asString(raw.language, 'unknown'),
+      intent: asIntent(raw.intent),
+      sentiment: asSentiment(raw.sentiment),
+      urgency: asUrgency(raw.urgency),
+      tags: asStringArray(raw.tags).slice(0, 5),
+    }),
+    // DEBUG (temporary): capture exactly what the classifier returned, pre-coercion.
+    rawIntent: typeof raw.intent === 'string' ? raw.intent : JSON.stringify(raw.intent ?? null),
+  }
 }
 
 async function runReplyGeneration(params: {

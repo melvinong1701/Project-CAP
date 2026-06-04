@@ -284,6 +284,15 @@ async function triggerAiSuggestion(params: {
           dismissed: false,
           reasoning: result.reasoning ?? null,
           sourceCited: result.sourceCited ?? null,
+          // DEBUG (temporary): grounding/classification trace for diagnosing missing order context.
+          _debug: {
+            intent: preprocessing.intent,
+            rawIntent: preprocessing.rawIntent ?? null,
+            orderMatchCount: grounding.orderMatchCount,
+            knowledgeMatchCount: grounding.knowledgeMatchCount,
+            catalogMatchCount: grounding.catalogMatchCount,
+            customerId: params.customerId,
+          },
         },
       })
       .eq('id', params.conversationId)
