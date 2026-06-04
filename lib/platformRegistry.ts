@@ -154,6 +154,12 @@ export const PLATFORMS: PlatformDef[] = [
         description: 'Look up order status for AI context',
         status: 'coming_soon',
       },
+      {
+        key: 'products',
+        label: 'Product Catalogue',
+        description: 'Sync products for AI product queries',
+        status: 'coming_soon',
+      },
     ],
   },
   {
