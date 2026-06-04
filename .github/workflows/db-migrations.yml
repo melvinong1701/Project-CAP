@@ -1,0 +1,39 @@
+name: Apply DB migrations
+
+# Closes the gap where migrations landed in supabase/migrations/ but reaching
+# prod was a manual step that got silently skipped. On every merge to main that
+# touches a migration file, this applies any pending migrations to prod via
+# `supabase db push`, comparing local files against the remote schema_migrations
+# ledger (so already-applied migrations are no-ops).
+#
+# REQUIRED SECRET: SUPABASE_DB_URL — the Postgres connection string for the prod
+# project (use the Session pooler or Direct connection, NOT the Transaction
+# pooler on :6543, which can't run all DDL). Until it's set, this workflow skips
+# gracefully instead of failing.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+  workflow_dispatch: {}
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Apply pending migrations to prod
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning::SUPABASE_DB_URL secret not set — skipping migration push. Set it in repo settings to enable automatic migrations."
+            exit 0
+          fi
+          supabase db push --db-url "$SUPABASE_DB_URL"
