@@ -96,9 +96,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    if (topic === 'orders/create') {
+    if (topic === 'orders/create' || topic === 'orders/updated') {
       const order = JSON.parse(rawBody.toString()) as ShopifyOrder
-      await handleOrderCreate({ order, storeId, organizationId: platformRow.organization_id })
+      await handleOrderUpsert({ order, storeId, organizationId: platformRow.organization_id })
     }
 
     if (topic === 'products/create' || topic === 'products/update') {
@@ -230,7 +230,7 @@ async function updateProductSyncCount(params: {
   }
 }
 
-async function handleOrderCreate(params: { order: ShopifyOrder; storeId: string; organizationId: string }) {
+async function handleOrderUpsert(params: { order: ShopifyOrder; storeId: string; organizationId: string }) {
   const { order, storeId, organizationId } = params
   const supabase = getSupabase()
   const recordedOrderLookup = await findRecordedShopifyOrder({

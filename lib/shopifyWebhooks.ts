@@ -1,5 +1,6 @@
 export const SHOPIFY_WEBHOOK_TOPICS = [
   'ORDERS_CREATE',
+  'ORDERS_UPDATED',
   'PRODUCTS_CREATE',
   'PRODUCTS_UPDATE',
   'PRODUCTS_DELETE',
@@ -50,6 +51,11 @@ function formatShopifyWebhookError(data: ShopifyWebhookCreateResponse, status: n
   return `Shopify returned status ${status}`
 }
 
+function isDuplicateShopifyWebhookError(error: ShopifyWebhookUserError) {
+  const message = error.message.toLowerCase()
+  return message.includes('already been taken') || message.includes('already exists')
+}
+
 export async function registerShopifyWebhook(params: {
   shop: string
   accessToken: string
@@ -76,6 +82,10 @@ export async function registerShopifyWebhook(params: {
   const webhookData = await webhookRes.json() as ShopifyWebhookCreateResponse
   const userErrors = webhookData.data?.webhookSubscriptionCreate?.userErrors ?? []
   const graphQLErrors = webhookData.errors ?? []
+
+  if (webhookRes.ok && graphQLErrors.length === 0 && userErrors.length > 0 && userErrors.every(isDuplicateShopifyWebhookError)) {
+    return
+  }
 
   if (!webhookRes.ok || userErrors.length > 0 || graphQLErrors.length > 0) {
     throw new Error(`Failed to register Shopify webhook ${params.topic}: ${formatShopifyWebhookError(webhookData, webhookRes.status)}`)
