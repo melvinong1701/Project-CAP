@@ -49,10 +49,13 @@ export async function assembleGroundingContext(params: {
   preprocessing: PreprocessingResult
   latestMessage: string
   history: ConversationContextMessage[]
+  disclosableOrderIds: string[]
   providedContext?: RetrievedContextSnippet[]
 }): Promise<GroundingContext> {
   if (params.providedContext?.length) {
-    return toGroundingContext(params.providedContext)
+    return toGroundingContext(
+      params.providedContext.filter(snippet => snippet.source !== 'order_history')
+    )
   }
 
   const catalogContext = params.storeId && CATALOG_INTENTS.has(params.preprocessing.intent)
@@ -72,7 +75,12 @@ export async function assembleGroundingContext(params: {
     )
     : []
   const orderContext = params.customerId && ORDER_INTENTS.has(params.preprocessing.intent)
-    ? await fetchOrderContext(params.supabase, params.organizationId, params.customerId)
+    ? await fetchOrderContext(
+      params.supabase,
+      params.organizationId,
+      params.customerId,
+      params.disclosableOrderIds
+    )
     : []
 
   return toGroundingContext([

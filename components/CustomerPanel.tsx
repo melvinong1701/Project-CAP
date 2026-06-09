@@ -18,7 +18,7 @@ interface ContactForm {
 }
 
 type ContactField = keyof ContactForm
-type CustomerOrderStatus = 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'returned'
+type CustomerOrderStatus = 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'returned' | 'refunded'
 type CustomerOrderChannel = Extract<Channel, 'shopify' | 'shopee' | 'lazada' | 'tiktok_shop'>
 
 interface CustomerOrderHistoryOrder {
@@ -80,6 +80,7 @@ function statusBadgeClass(status: CustomerOrderStatus) {
   if (status === 'delivered') return 'bg-emerald-50 text-emerald-700'
   if (status === 'shipped') return 'bg-blue-50 text-blue-700'
   if (status === 'cancelled' || status === 'returned') return 'bg-rose-50 text-rose-700'
+  if (status === 'refunded') return 'bg-orange-50 text-orange-700'
   return 'bg-amber-50 text-amber-700'
 }
 

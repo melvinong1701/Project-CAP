@@ -1,6 +1,7 @@
 import type { AiConfidence } from '@/lib/types'
 import type { AiIntent } from '@/lib/aiRouter'
 import { CATALOG_INTENTS } from '@/lib/catalogRetrieval'
+import { ORDER_INTENTS } from '@/lib/orderRetrieval'
 
 const BLOCKED_AUTO_SEND_INTENTS = new Set<AiIntent>([
   'availability',
@@ -46,6 +47,24 @@ export function downgradeForAmbiguity(
     confidence === 'high' &&
     CATALOG_INTENTS.has(intent) &&
     catalogMatchCount >= CATALOG_AMBIGUITY_THRESHOLD
+  ) {
+    return 'medium'
+  }
+
+  return confidence
+}
+
+export function downgradeForMissingOrderContext(
+  confidence: AiConfidence,
+  orderMatchCount: number,
+  intent: AiIntent,
+  sourceCited: string | null
+): AiConfidence {
+  if (
+    confidence === 'high' &&
+    ORDER_INTENTS.has(intent) &&
+    orderMatchCount === 0 &&
+    (sourceCited == null || sourceCited === 'order_history')
   ) {
     return 'medium'
   }

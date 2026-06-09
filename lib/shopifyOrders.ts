@@ -12,7 +12,7 @@ interface ShopifyOrderCustomer {
   default_address?: ShopifyOrderAddress
 }
 
-export type CustomerOrderStatus = 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'returned'
+export type CustomerOrderStatus = 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'returned' | 'refunded'
 
 export interface ShopifyLineItem {
   title?: string
@@ -98,15 +98,15 @@ export function mapShopifyOrderStatus(order: ShopifyOrder): CustomerOrderStatus 
 
   if (order.cancelled_at) return 'cancelled'
 
-  if (
+  const isPhysicalReturn =
+    fulfillmentStatus === 'returned' || fulfillmentStates.includes('returned')
+  const isRefund =
     financialStatus === 'refunded' ||
     financialStatus === 'partially_refunded' ||
-    fulfillmentStatus === 'returned' ||
-    fulfillmentStates.includes('returned') ||
     hasRefund
-  ) {
-    return 'returned'
-  }
+
+  if (isPhysicalReturn) return 'returned'
+  if (isRefund) return 'refunded'
 
   if (fulfillmentStatus === 'delivered' || fulfillmentStates.includes('delivered')) {
     return 'delivered'

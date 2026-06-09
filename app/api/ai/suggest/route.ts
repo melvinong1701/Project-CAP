@@ -16,9 +16,17 @@ import {
   calibrateConfidence,
   canAutoSend,
   downgradeForAmbiguity,
+  downgradeForMissingOrderContext,
   isConfidenceCalibrationShadowMode,
 } from '@/lib/autoSend'
 import { assembleGroundingContext } from '@/lib/grounding'
+import {
+  type OrderForMatch,
+  customerMessageContents,
+  ordersMentionedByCustomer,
+  toOrderIdArray,
+  uniqueOrderIds,
+} from '@/lib/orderVerification'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +40,7 @@ interface ConversationRow {
   id: string
   store_id: string | null
   customer_id: string | null
+  verified_order_ids: string[] | null
   channel: Channel
   sender_name: string | null
   last_message: string | null
@@ -102,6 +111,42 @@ function extractCurrentBlock(messages: ConversationContextMessage[]): Conversati
   return block
 }
 
+async function loadDisclosableOrderIds(params: {
+  supabase: ReturnType<typeof getSupabase>
+  organizationId: string
+  conversation: ConversationRow | null
+  history: ConversationContextMessage[]
+}): Promise<string[]> {
+  if (!params.conversation?.customer_id || params.conversation.channel !== 'telegram') {
+    return []
+  }
+
+  const { data, error } = await params.supabase
+    .from('customer_orders')
+    .select('id, order_reference, external_order_id, raw_payload')
+    .eq('organization_id', params.organizationId)
+    .eq('customer_id', params.conversation.customer_id)
+    .returns<OrderForMatch[]>()
+
+  if (error) {
+    console.error('Order verification order lookup failed:', error)
+    return []
+  }
+
+  const orders = data ?? []
+  if (orders.length === 0) {
+    return []
+  }
+
+  const verifiedOrderIds = toOrderIdArray(params.conversation.verified_order_ids)
+  const mentionedOrderIds = ordersMentionedByCustomer({
+    customerMessages: customerMessageContents(params.history),
+    orders,
+  })
+
+  return uniqueOrderIds([...verifiedOrderIds, ...mentionedOrderIds])
+}
+
 export async function POST(req: NextRequest) {
   try {
     const ctx = await requireAuth()
@@ -121,7 +166,7 @@ export async function POST(req: NextRequest) {
     if (body.conversationId) {
       const { data: conv, error: convErr } = await supabase
         .from('conversations')
-        .select('id, store_id, customer_id, channel, sender_name, last_message')
+        .select('id, store_id, customer_id, verified_order_ids, channel, sender_name, last_message')
         .eq('id', body.conversationId)
         .eq('organization_id', ORG_ID)
         .single()
@@ -189,6 +234,13 @@ export async function POST(req: NextRequest) {
       storeConfig,
     })
 
+    const disclosableOrderIds = await loadDisclosableOrderIds({
+      supabase,
+      organizationId: ORG_ID,
+      conversation,
+      history,
+    })
+
     const grounding = await assembleGroundingContext({
       supabase,
       organizationId: ORG_ID,
@@ -197,6 +249,7 @@ export async function POST(req: NextRequest) {
       preprocessing,
       latestMessage,
       history,
+      disclosableOrderIds,
       providedContext: body.retrievedContext,
     })
 
@@ -214,7 +267,13 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await suggestReply(suggestInput, preprocessing)
-    const effectiveConfidence = downgradeForAmbiguity(result.confidence, grounding.catalogMatchCount, preprocessing.intent)
+    const ambiguityAdjustedConfidence = downgradeForAmbiguity(result.confidence, grounding.catalogMatchCount, preprocessing.intent)
+    const effectiveConfidence = downgradeForMissingOrderContext(
+      ambiguityAdjustedConfidence,
+      grounding.orderMatchCount,
+      preprocessing.intent,
+      result.sourceCited ?? null
+    )
     const calibration = calibrateConfidence({
       confidence: effectiveConfidence,
       intent: preprocessing.intent,

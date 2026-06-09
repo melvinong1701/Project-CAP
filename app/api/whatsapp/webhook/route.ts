@@ -12,6 +12,7 @@ import {
   calibrateConfidence,
   canAutoSend,
   downgradeForAmbiguity,
+  downgradeForMissingOrderContext,
   isConfidenceCalibrationShadowMode,
 } from '@/lib/autoSend'
 import { assembleGroundingContext } from '@/lib/grounding'
@@ -248,13 +249,21 @@ async function triggerAiSuggestion(params: {
       preprocessing,
       latestMessage: params.latestMessage,
       history,
+      // Order disclosure verification is scoped to Telegram MVP; other channels fail closed until a channel trust model is specified.
+      disclosableOrderIds: [],
     })
 
     const result = await suggestReply({
       ...suggestInput,
       retrievedContext: grounding.snippets,
     }, preprocessing)
-    const effectiveConfidence = downgradeForAmbiguity(result.confidence, grounding.catalogMatchCount, preprocessing.intent)
+    const ambiguityAdjustedConfidence = downgradeForAmbiguity(result.confidence, grounding.catalogMatchCount, preprocessing.intent)
+    const effectiveConfidence = downgradeForMissingOrderContext(
+      ambiguityAdjustedConfidence,
+      grounding.orderMatchCount,
+      preprocessing.intent,
+      result.sourceCited ?? null
+    )
     const calibration = calibrateConfidence({
       confidence: effectiveConfidence,
       intent: preprocessing.intent,

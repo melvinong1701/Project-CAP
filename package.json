@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test:order-verification": "tsx --test lib/orderVerification.test.ts",
     "eval:retrieval": "tsx scripts/eval-retrieval.ts",
     "eval:calibration": "tsx scripts/eval-calibration.ts"
   },

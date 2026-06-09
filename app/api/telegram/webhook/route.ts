@@ -12,9 +12,18 @@ import {
   calibrateConfidence,
   canAutoSend,
   downgradeForAmbiguity,
+  downgradeForMissingOrderContext,
   isConfidenceCalibrationShadowMode,
 } from '@/lib/autoSend'
 import { assembleGroundingContext } from '@/lib/grounding'
+import {
+  type OrderForMatch,
+  customerMessageContents,
+  ordersMentionedByCustomer,
+  ordersVerifiedByPostcode,
+  toOrderIdArray,
+  uniqueOrderIds,
+} from '@/lib/orderVerification'
 import { sendTelegramMessage } from '@/lib/sendTelegramMessage'
 
 function getSupabase() {
@@ -63,6 +72,10 @@ interface MessageRow {
   timestamp: string
 }
 
+interface ConversationVerificationRow {
+  verified_order_ids: string[] | null
+}
+
 interface StoreOrgRow {
   organization_id: string
 }
@@ -97,6 +110,78 @@ function extractCurrentBlock(messages: ConversationContextMessage[]): Conversati
   }
 
   return block
+}
+
+async function loadTelegramDisclosableOrderIds(params: {
+  supabase: ReturnType<typeof getSupabase>
+  organizationId: string
+  conversationId: string
+  customerId: string | null
+  latestMessage: string
+  history: ConversationContextMessage[]
+}): Promise<string[]> {
+  if (!params.customerId) {
+    return []
+  }
+
+  const [ordersResult, conversationResult] = await Promise.all([
+    params.supabase
+      .from('customer_orders')
+      .select('id, order_reference, external_order_id, raw_payload')
+      .eq('organization_id', params.organizationId)
+      .eq('customer_id', params.customerId)
+      .returns<OrderForMatch[]>(),
+    params.supabase
+      .from('conversations')
+      .select('verified_order_ids')
+      .eq('id', params.conversationId)
+      .eq('organization_id', params.organizationId)
+      .maybeSingle<ConversationVerificationRow>(),
+  ])
+
+  if (ordersResult.error) {
+    console.error('Order verification order lookup failed:', ordersResult.error)
+    return []
+  }
+
+  const orders = ordersResult.data ?? []
+  if (orders.length === 0) {
+    return []
+  }
+
+  let verifiedOrderIds = toOrderIdArray(conversationResult.data?.verified_order_ids)
+
+  if (conversationResult.error) {
+    console.error('Order verification state lookup failed:', conversationResult.error)
+  } else {
+    const postcodeVerifiedOrderIds = ordersVerifiedByPostcode({
+      message: params.latestMessage,
+      orders,
+    })
+    const hasNewPostcodeVerification = postcodeVerifiedOrderIds.some(orderId => !verifiedOrderIds.includes(orderId))
+
+    if (hasNewPostcodeVerification) {
+      const mergedVerifiedOrderIds = uniqueOrderIds([...verifiedOrderIds, ...postcodeVerifiedOrderIds])
+      const { error: updateErr } = await params.supabase
+        .from('conversations')
+        .update({ verified_order_ids: mergedVerifiedOrderIds })
+        .eq('id', params.conversationId)
+        .eq('organization_id', params.organizationId)
+
+      if (updateErr) {
+        console.error('Order postcode verification persistence failed:', updateErr)
+      } else {
+        verifiedOrderIds = mergedVerifiedOrderIds
+      }
+    }
+  }
+
+  const mentionedOrderIds = ordersMentionedByCustomer({
+    customerMessages: customerMessageContents(params.history),
+    orders,
+  })
+
+  return uniqueOrderIds([...verifiedOrderIds, ...mentionedOrderIds])
 }
 
 async function linkTelegramCustomer(params: {
@@ -192,6 +277,14 @@ async function triggerAiSuggestion(params: {
     }
 
     const history = toContextMessages(messages as MessageRow[] | null).reverse()
+    const disclosableOrderIds = await loadTelegramDisclosableOrderIds({
+      supabase: params.supabase,
+      organizationId: params.organizationId,
+      conversationId: params.conversationId,
+      customerId: params.customerId,
+      latestMessage: params.latestMessage,
+      history,
+    })
     const currentBlock = extractCurrentBlock(history)
     const suggestInput: SuggestReplyInput = {
       organizationId: params.organizationId,
@@ -214,13 +307,20 @@ async function triggerAiSuggestion(params: {
       preprocessing,
       latestMessage: params.latestMessage,
       history,
+      disclosableOrderIds,
     })
 
     const result = await suggestReply({
       ...suggestInput,
       retrievedContext: grounding.snippets,
     }, preprocessing)
-    const effectiveConfidence = downgradeForAmbiguity(result.confidence, grounding.catalogMatchCount, preprocessing.intent)
+    const ambiguityAdjustedConfidence = downgradeForAmbiguity(result.confidence, grounding.catalogMatchCount, preprocessing.intent)
+    const effectiveConfidence = downgradeForMissingOrderContext(
+      ambiguityAdjustedConfidence,
+      grounding.orderMatchCount,
+      preprocessing.intent,
+      result.sourceCited ?? null
+    )
     const calibration = calibrateConfidence({
       confidence: effectiveConfidence,
       intent: preprocessing.intent,
