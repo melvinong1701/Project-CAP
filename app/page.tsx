@@ -65,6 +65,8 @@ type ConversationsResponse = {
   error?: string | null
 }
 
+const RETRY_AI_ERROR = 'AI retry failed. Please try again'
+
 // ─── Mappers ────────────────────────────────────────────────────────────────
 
 function mapConv(row: ConvRow, messages: Message[] = []): Conversation {
@@ -661,6 +663,14 @@ export default function Home() {
   }
 
   const handleRetryAi = (convId: string) => {
+    const setRetryError = (message: string) => {
+      setConversations(prev =>
+        prev.map(c =>
+          c.id === convId ? { ...c, aiSuggestion: { error: message, dismissed: false as const } } : c
+        )
+      )
+    }
+
     setConversations(prev =>
       prev.map(c => c.id === convId ? { ...c, aiSuggestion: undefined } : c)
     )
@@ -689,9 +699,11 @@ export default function Home() {
                 : c
             )
           )
+        } else {
+          setRetryError(res.error ?? RETRY_AI_ERROR)
         }
       })
-      .catch(() => {})
+      .catch(() => setRetryError(RETRY_AI_ERROR))
   }
 
   const handleStatusChange = async (convId: string, newStatus: ConversationStatus) => {

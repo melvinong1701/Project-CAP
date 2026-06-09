@@ -4,7 +4,9 @@ export type Channel =
   | 'shopee'
   | 'lazada'
   | 'tiktok_shop'
+  | 'tokopedia'
   | 'whatsapp'
+  | 'line'
   | 'facebook_messenger'
   | 'instagram'
 

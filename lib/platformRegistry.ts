@@ -1,3 +1,5 @@
+import type { Channel } from '@/lib/types'
+
 export type PlatformCapability = {
   key: string
   label: string
@@ -58,7 +60,7 @@ export const PLATFORMS: PlatformDef[] = [
       {
         key: 'products',
         label: 'Product Catalogue',
-        description: 'Token is scoped for product sync in Phase 2',
+        description: 'Sync products for AI product queries',
         status: 'active',
       },
     ],
@@ -200,19 +202,20 @@ export const PLATFORMS: PlatformDef[] = [
     label: 'WhatsApp',
     logo: '/logos/whatsapp.svg',
     color: '#25D366',
-    connectAvailable: true,
+    // On hold pending company incorporation + Meta Business Portfolio — see CONTEXT.md
+    connectAvailable: false,
     capabilities: [
       {
         key: 'messages',
         label: 'Messages',
         description: 'Receive and reply to customer messages',
-        status: 'active',
+        status: 'coming_soon',
       },
       {
         key: 'ai_suggest',
         label: 'AI Suggestions',
         description: 'AI drafts replies for agent review',
-        status: 'active',
+        status: 'coming_soon',
       },
     ],
   },
@@ -259,3 +262,17 @@ export const PLATFORMS: PlatformDef[] = [
     ],
   },
 ]
+
+// A connect-catalog entry can map to one or more normalised Channels.
+// 'meta' is one connection that produces facebook_messenger + instagram conversations.
+export const PLATFORM_CHANNELS: Record<PlatformDef['id'], Channel[]> = {
+  telegram: ['telegram'],
+  shopify: ['shopify'],
+  shopee: ['shopee'],
+  lazada: ['lazada'],
+  tiktok_shop: ['tiktok_shop'],
+  tokopedia: ['tokopedia'],
+  whatsapp: ['whatsapp'],
+  line: ['line'],
+  meta: ['facebook_messenger', 'instagram'],
+}

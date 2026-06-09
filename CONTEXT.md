@@ -74,8 +74,6 @@ In rough order:
 5. **Shopee / Lazada / TikTok adapters** — the actual beachhead channels, but externally blocked (see below).
 
 **Lower-priority known issues (don't proactively fix; flag if touched):**
-- `lib/platformRegistry.ts`: TikTok Shop missing the `products` (catalogue) capability — add when next editing the registry.
-- `handleRetryAi` in `app/page.tsx`: `.catch(() => {})` means a retry-on-retry failure blanks the suggestion slot silently. Restore the error card when revisiting (after RAG + confidence validation).
 - Dashboard loading UX: `ChannelMixBlock` + `LanguageBreakdownBlock` show empty text during load; `OpenQueueBlock` has a proper skeleton. Add matching skeletons in a polish pass.
 - Optional defence-in-depth: user-facing read routes (`/api/conversations`, `/api/org`, `/api/stores`) use the service-role client with an app-level `.eq('organization_id', …)` — RLS doesn't guard these (service role bypasses it); the app filter is the only boundary. Could switch to the authenticated server client. Queued, not blocking.
 
