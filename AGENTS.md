@@ -39,13 +39,13 @@ Target market: Singapore + Malaysia first. Language support required from Day 1:
 | Frontend | Next.js 14 (App Router) + React + Tailwind CSS + shadcn/ui |
 | Backend | Next.js API Routes (no separate worker process — everything runs on Vercel) |
 | Database | PostgreSQL via Supabase |
-| Cache / Queue | Redis via Upstash |
 | AI | OpenAI API with two-queue model routing |
 | Auth | Supabase Auth (`@supabase/ssr`) — RBAC via `user_profiles.role` (`owner` / `agent`); org context via `lib/getOrgId.ts` |
-| File storage | Cloudflare R2 |
 | Deploy | **Vercel only** — frontend, API routes, webhooks, and the AI queue all run on Vercel. No Railway; there is no separate worker tier. |
 
 Do not introduce new libraries or infrastructure without flagging it in your task summary. Stick to the stack above.
+
+**Not currently used:** Redis/Upstash (cache/queue) and Cloudflare R2 (storage) appear in older plans but are not in the codebase — there is no separate cache tier or object store. Reintroduce only if scale requires, and flag it.
 
 ---
 
@@ -64,7 +64,7 @@ API Gateway (Next.js API Routes + Supabase Auth)
 │             │  reply…)   │  routing, tags)  │
 └─────────────┴────────────┴──────────────────┘
    ↓
-Data layer: Postgres + Redis + R2
+Data layer: Postgres (Supabase)
    ↓
 Webhooks + AI queue: Next.js API routes on Vercel (no separate worker tier)
 ```
