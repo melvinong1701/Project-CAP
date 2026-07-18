@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     const { error: currentUpdateError } = await supabase
       .from('user_profiles')
-      .update({ role: 'agent' })
+      .update({ role: 'admin' })
       .eq('id', ctx.userId)
       .eq('organization_id', ctx.organizationId)
 

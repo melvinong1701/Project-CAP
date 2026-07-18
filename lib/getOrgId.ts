@@ -4,8 +4,13 @@ import { createSupabaseServerClient } from '@/lib/supabaseServer'
 interface OrgContext {
   userId: string
   organizationId: string
-  role: 'owner' | 'agent'
+  role: 'owner' | 'admin' | 'agent'
   storedRole: string
+}
+
+function normalizeRole(role: string): OrgContext['role'] {
+  if (role === 'owner' || role === 'admin') return role
+  return 'agent'
 }
 
 export async function getOrgId(): Promise<OrgContext | null> {
@@ -25,7 +30,7 @@ export async function getOrgId(): Promise<OrgContext | null> {
   return {
     userId: user.id,
     organizationId: profile.organization_id,
-    role: profile.role === 'agent' ? 'agent' : 'owner',
+    role: normalizeRole(profile.role),
     storedRole: profile.role,
   }
 }
@@ -43,6 +48,17 @@ export async function requireOwner(): Promise<OrgContext | NextResponse> {
   if (ctx instanceof NextResponse) return ctx
 
   if (ctx.role !== 'owner') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  return ctx
+}
+
+export async function requireAdmin(): Promise<OrgContext | NextResponse> {
+  const ctx = await requireAuth()
+  if (ctx instanceof NextResponse) return ctx
+
+  if (ctx.role !== 'owner' && ctx.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

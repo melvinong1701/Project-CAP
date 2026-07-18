@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth, requireOwner } from '@/lib/getOrgId'
+import { requireAdmin, requireAuth, requireOwner } from '@/lib/getOrgId'
 import { createSupabaseAdminClient } from '@/lib/supabaseAdmin'
 import { isLanguageValue, planConfig } from '@/lib/accountDefaults'
 
@@ -73,7 +73,7 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const ctx = await requireOwner()
+    const ctx = await requireAdmin()
     if (ctx instanceof NextResponse) return ctx
 
     const payload = await request.json() as OrgPayload

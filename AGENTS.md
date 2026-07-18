@@ -40,7 +40,7 @@ Target market: Singapore + Malaysia first. Language support required from Day 1:
 | Backend | Next.js API Routes (no separate worker process — everything runs on Vercel) |
 | Database | PostgreSQL via Supabase |
 | AI | OpenAI API with two-queue model routing |
-| Auth | Supabase Auth (`@supabase/ssr`) — RBAC via `user_profiles.role` (`owner` / `agent`); org context via `lib/getOrgId.ts` |
+| Auth | Supabase Auth (`@supabase/ssr`) — RBAC via `user_profiles.role` (`owner` / `admin` / `agent`); org context via `lib/getOrgId.ts` |
 | Deploy | **Vercel only** — frontend, API routes, webhooks, and the AI queue all run on Vercel. No Railway; there is no separate worker tier. |
 
 Do not introduce new libraries or infrastructure without flagging it in your task summary. Stick to the stack above.

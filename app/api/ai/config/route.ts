@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { requireAuth, requireOwner } from '@/lib/getOrgId'
+import { requireAdmin, requireAuth } from '@/lib/getOrgId'
 
 interface StoreAiConfigBody {
   storeId?: unknown
@@ -62,9 +62,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const ctx = await requireOwner()
+    const ctx = await requireAdmin()
     if (ctx instanceof NextResponse) return ctx
-    if (ctx.storedRole !== 'owner') return jsonError('Forbidden', 403)
     const ORG_ID = ctx.organizationId
 
     const body = await req.json() as StoreAiConfigBody

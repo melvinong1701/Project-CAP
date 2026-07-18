@@ -26,7 +26,8 @@ import {
 import { PLATFORMS } from '@/lib/platformRegistry'
 import { cn } from '@/lib/utils'
 
-type Role = 'owner' | 'agent'
+type Role = 'owner' | 'admin' | 'agent'
+type InviteRole = 'admin' | 'agent'
 
 interface AccountData {
   id: string
@@ -270,14 +271,18 @@ function ToggleSwitch({
 }
 
 function RoleBadge({ role }: { role: Role }) {
+  const label = role === 'owner' ? 'Owner' : role === 'admin' ? 'Admin' : 'Agent'
+
   return (
     <span
       className={cn(
         'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold',
-        role === 'owner' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'
+        role === 'owner' && 'bg-blue-50 text-blue-700',
+        role === 'admin' && 'bg-indigo-50 text-indigo-700',
+        role === 'agent' && 'bg-gray-100 text-gray-600'
       )}
     >
-      {role === 'owner' ? 'Owner' : 'Agent'}
+      {label}
     </span>
   )
 }
@@ -361,6 +366,7 @@ export default function AccountPageClient() {
 
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState<InviteRole>('agent')
   const [inviteStatus, setInviteStatus] = useState('')
   const [inviteSaving, setInviteSaving] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
@@ -371,6 +377,15 @@ export default function AccountPageClient() {
   const [deleteStatus, setDeleteStatus] = useState('')
 
   const isOwner = account?.role === 'owner'
+  const isAdmin = account?.role === 'admin'
+  const canManageTeam = isOwner || isAdmin
+  const canEditOrganization = canManageTeam
+
+  const canRemoveMember = (member: MemberData) => {
+    if (member.isCurrentUser || member.role === 'owner') return false
+    if (member.role === 'admin') return isOwner
+    return canManageTeam
+  }
 
   const visibleSections = useMemo(
     () => sections.filter(section => !section.ownerOnly || isOwner),
@@ -582,11 +597,12 @@ export default function AccountPageClient() {
   const inviteMember = async () => {
     setInviteSaving(true)
     setInviteStatus('')
+    const role = isOwner ? inviteRole : 'agent'
 
     const response = await fetch('/api/org/invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: inviteEmail, role: 'agent' }),
+      body: JSON.stringify({ email: inviteEmail, role }),
     })
     const body = await readJson<{ ok: boolean }>(response)
 
@@ -597,6 +613,7 @@ export default function AccountPageClient() {
     }
 
     setInviteEmail('')
+    setInviteRole('agent')
     setInviteOpen(false)
     await loadData()
     setInviteSaving(false)
@@ -860,25 +877,25 @@ export default function AccountPageClient() {
               <AvatarPreview name={orgForm.name} imageUrl={orgForm.logoUrl || null} size="lg" />
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Org name" error={orgErrors.name}>
-                  <TextInput disabled={!isOwner} value={orgForm.name} onChange={event => setOrgForm({ ...orgForm, name: event.target.value })} />
+                  <TextInput disabled={!canEditOrganization} value={orgForm.name} onChange={event => setOrgForm({ ...orgForm, name: event.target.value })} />
                 </Field>
                 <Field label="Org logo URL" error={orgErrors.logoUrl}>
-                  <TextInput disabled={!isOwner} value={orgForm.logoUrl} onChange={event => setOrgForm({ ...orgForm, logoUrl: event.target.value })} placeholder="https://..." />
+                  <TextInput disabled={!canEditOrganization} value={orgForm.logoUrl} onChange={event => setOrgForm({ ...orgForm, logoUrl: event.target.value })} placeholder="https://..." />
                 </Field>
                 <Field label="Default language" error={orgErrors.defaultLanguage}>
-                  <SelectInput disabled={!isOwner} value={orgForm.defaultLanguage} onChange={event => setOrgForm({ ...orgForm, defaultLanguage: event.target.value })}>
+                  <SelectInput disabled={!canEditOrganization} value={orgForm.defaultLanguage} onChange={event => setOrgForm({ ...orgForm, defaultLanguage: event.target.value })}>
                     {languages.map(language => <option key={language.value} value={language.value}>{language.label}</option>)}
                   </SelectInput>
                 </Field>
                 <Field label="Default timezone" error={orgErrors.defaultTimezone}>
-                  <TextInput disabled={!isOwner} list="org-timezones" value={orgForm.defaultTimezone} onChange={event => setOrgForm({ ...orgForm, defaultTimezone: event.target.value })} />
+                  <TextInput disabled={!canEditOrganization} list="org-timezones" value={orgForm.defaultTimezone} onChange={event => setOrgForm({ ...orgForm, defaultTimezone: event.target.value })} />
                 </Field>
               </div>
             </div>
             <datalist id="org-timezones">
               {timezones.map(timezone => <option key={timezone} value={timezone} />)}
             </datalist>
-            {isOwner && (
+            {canEditOrganization && (
               <div className="mt-5 flex items-center gap-3">
                 <button type="button" disabled={orgSaving} onClick={saveOrganization} className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-50">
                   {orgSaving ? 'Saving...' : 'Save organization'}
@@ -891,8 +908,15 @@ export default function AccountPageClient() {
           <section className="rounded-lg border border-gray-100 bg-white p-6">
             <div className="mb-5 flex items-center justify-between gap-4">
               <SectionHeader id="team" label="Team" icon={Users} />
-              {isOwner && (
-                <button type="button" onClick={() => setInviteOpen(true)} className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800">
+              {canManageTeam && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInviteRole('agent')
+                    setInviteOpen(true)
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                >
                   <Plus className="h-4 w-4" />
                   Invite
                 </button>
@@ -905,7 +929,7 @@ export default function AccountPageClient() {
                     <th className="px-4 py-3 font-semibold">Member</th>
                     <th className="px-4 py-3 font-semibold">Role</th>
                     <th className="px-4 py-3 font-semibold">Joined</th>
-                    {isOwner && <th className="px-4 py-3 font-semibold" />}
+                    {canManageTeam && <th className="px-4 py-3 font-semibold" />}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -922,9 +946,9 @@ export default function AccountPageClient() {
                       </td>
                       <td className="px-4 py-3"><RoleBadge role={member.role} /></td>
                       <td className="px-4 py-3 text-gray-500">{formatDate(member.joinedAt)}</td>
-                      {isOwner && (
+                      {canManageTeam && (
                         <td className="px-4 py-3 text-right">
-                          {!member.isCurrentUser && (
+                          {canRemoveMember(member) && (
                             <button type="button" onClick={() => removeMember(member)} className="text-xs font-semibold text-red-500 hover:text-red-600">
                               Remove
                             </button>
@@ -1064,14 +1088,19 @@ export default function AccountPageClient() {
       </div>
 
       {inviteOpen && (
-        <Modal title="Invite agent" onClose={() => setInviteOpen(false)}>
+        <Modal title="Invite member" onClose={() => setInviteOpen(false)}>
           <div className="space-y-4">
             <Field label="Email">
               <TextInput type="email" value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} autoFocus />
             </Field>
             <Field label="Role">
-              <SelectInput value="agent" disabled>
+              <SelectInput
+                value={isOwner ? inviteRole : 'agent'}
+                disabled={!isOwner}
+                onChange={event => setInviteRole(event.target.value as InviteRole)}
+              >
                 <option value="agent">Agent</option>
+                {isOwner && <option value="admin">Admin</option>}
               </SelectInput>
             </Field>
             {inviteStatus && <InlineStatus tone="error" message={inviteStatus} />}

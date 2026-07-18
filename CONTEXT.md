@@ -1,6 +1,6 @@
 # CONTEXT.md — Project CAP Living State
 
-**Last verified: 2026-06-09.** This is the fast-moving layer: what's actually true right now, what to work on next, and the traps that aren't obvious from the code. It will drift — treat anything below as stale if the date is more than ~2 weeks old, and re-sync (see "Keeping this fresh" at the bottom).
+**Last verified: 2026-07-18.** This is the fast-moving layer: what's actually true right now, what to work on next, and the traps that aren't obvious from the code. It will drift — treat anything below as stale if the date is more than ~2 weeks old, and re-sync (see "Keeping this fresh" at the bottom).
 
 For the stable stuff, read these first and don't expect this file to repeat them:
 - **`AGENTS.md`** (repo root) — the canonical engineering doc: product definition, tech stack, architecture, channel-adapter pattern, normalised types, scope traps, code standards, review checklist. This is what Codex/Claude Code read.
@@ -15,7 +15,7 @@ Where this file and those two disagree, **this file wins** (it's newer). Known d
 ## Corrections to the stable docs (read these — they're load-bearing)
 
 - **No Railway. Vercel only.** `CLAUDE.md` and `AGENTS.md` say "Vercel (frontend) + Railway (workers)". That was the *intended* architecture and was never built. There is no `railway.json`/`Procfile`/worker entrypoint/cron/queue. Everything — credential decryption, message sending, the AI queue — is a Next.js API route on Vercel. **Never tell Melvin to set env vars or deploy on Railway; he has no Railway account.** Env vars live in exactly two places: Vercel project settings + local `.env.local`.
-- **Auth is live.** The hardcoded org UUID (`00000000-0000-0000-0000-000000000001`) is gone from tenant-scoped routes. Supabase Auth + RBAC (`owner`/`agent`) via `lib/getOrgId.ts`. Any memory or doc implying "auth comes later" is stale.
+- **Auth is live.** The hardcoded org UUID (`00000000-0000-0000-0000-000000000001`) is gone from tenant-scoped routes. Supabase Auth + RBAC (`owner`/`admin`/`agent`) via `lib/getOrgId.ts`. Admins can manage agent-level team/settings surfaces but are not owners for transfer, delete, admin invites, or admin removal. Any memory or doc implying "auth comes later" is stale.
 - **`AGENTS.md` current-state section understates progress** — it still says "Shopify Phase 2 (catalogue sync) not built". Catalogue sync, RAG, KB, RLS, WhatsApp adapter, and auto-send wiring all shipped since. Trust the state below.
 
 ---
@@ -36,7 +36,7 @@ Where this file and those two disagree, **this file wins** (it's newer). Known d
 
 **Shipped and live on `main`:**
 - Next.js 14 + Tailwind + shadcn/ui inbox against Supabase (`conversations`, `messages`, `customers`, `stores`, `store_platforms`, `store_ai_config`, `user_profiles`, `organizations`, `store_knowledge`, `store_products`, `store_product_sync_state`).
-- **Auth + RBAC** (Supabase Auth, owner/agent, `lib/getOrgId.ts`).
+- **Auth + RBAC** (Supabase Auth, owner/admin/agent, `lib/getOrgId.ts`; admin role shipped 2026-07-18).
 - **RLS tenant isolation** (PR #9, deployed 2026-06-01): RLS on all 13 public tables, org-scoped per-command policies via `private.auth_org_id()`; two-org isolation test passes; advisors clean.
 - **Telegram adapter** — complete (webhook in, outbound send, connect/disconnect).
 - **Shopify adapter** — OAuth install/callback + `orders/create` webhook; product catalogue sync (`/api/shopify/sync-products`, webhook product create/update/delete, `store_product_sync_state`, catalogue panel). Webhook registration via **GraphQL** `webhookSubscriptionCreate`, not REST.
