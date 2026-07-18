@@ -14,5 +14,6 @@ Two non-negotiables, repeated here because they bite:
 
 - **Deploy is Vercel only — there is no Railway.** Ignore any "Railway (workers)" line in older docs; it was intended, never built.
 - **Multi-tenancy:** `organization_id` on every table, every query, every API route. Never cross org boundaries.
+- **RBAC:** `user_profiles.role` uses `owner` / `admin` / `agent`; admins are elevated members, not owners.
 
 Before pushing: run `tsc --noEmit` + ESLint, then push to `origin main` (pre-push hook enforces this).

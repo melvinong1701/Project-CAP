@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireOwner } from '@/lib/getOrgId'
+import { requireAdmin } from '@/lib/getOrgId'
 import { createSupabaseAdminClient } from '@/lib/supabaseAdmin'
 
 export const dynamic = 'force-dynamic'
@@ -11,19 +11,23 @@ interface InvitePayload {
 
 export async function POST(request: NextRequest) {
   try {
-    const ctx = await requireOwner()
+    const ctx = await requireAdmin()
     if (ctx instanceof NextResponse) return ctx
 
     const payload = await request.json() as InvitePayload
     const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : ''
-    const role = payload.role === 'agent' ? 'agent' : ''
+    const role = payload.role === 'agent' || payload.role === 'admin' ? payload.role : ''
 
     if (!email || !email.includes('@')) {
       return NextResponse.json({ data: null, error: 'A valid email is required', field: 'email' }, { status: 400 })
     }
 
-    if (role !== 'agent') {
-      return NextResponse.json({ data: null, error: 'Only agent invites are supported', field: 'role' }, { status: 400 })
+    if (!role) {
+      return NextResponse.json({ data: null, error: 'Role must be agent or admin', field: 'role' }, { status: 400 })
+    }
+
+    if (role === 'admin' && ctx.role !== 'owner') {
+      return NextResponse.json({ data: null, error: 'Only owners can invite admins', field: 'role' }, { status: 403 })
     }
 
     const supabase = createSupabaseAdminClient()

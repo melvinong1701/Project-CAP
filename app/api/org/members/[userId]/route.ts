@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireOwner } from '@/lib/getOrgId'
+import { requireAdmin } from '@/lib/getOrgId'
 import { createSupabaseAdminClient } from '@/lib/supabaseAdmin'
 
 export const dynamic = 'force-dynamic'
@@ -9,7 +9,7 @@ export async function DELETE(
   { params }: { params: { userId: string } }
 ) {
   try {
-    const ctx = await requireOwner()
+    const ctx = await requireAdmin()
     if (ctx instanceof NextResponse) return ctx
 
     if (params.userId === ctx.userId) {
@@ -30,6 +30,10 @@ export async function DELETE(
 
     if (member.role === 'owner') {
       return NextResponse.json({ data: null, error: 'Transfer ownership before removing the owner' }, { status: 400 })
+    }
+
+    if (member.role === 'admin' && ctx.role !== 'owner') {
+      return NextResponse.json({ data: null, error: 'Only owners can remove admins' }, { status: 403 })
     }
 
     const { error } = await supabase
