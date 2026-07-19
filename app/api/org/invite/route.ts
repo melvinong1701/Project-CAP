@@ -49,8 +49,10 @@ export async function POST(request: NextRequest) {
     }
 
     const origin = request.headers.get('origin') ?? process.env.NEXT_PUBLIC_APP_URL ?? ''
+    // Send the invitee to the dedicated set-password page so they choose their own
+    // password on arrival (Approach A). No password is ever generated or emailed.
     const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
-      redirectTo: origin ? `${origin}/auth/callback?next=/account` : undefined,
+      redirectTo: origin ? `${origin}/auth/set-password` : undefined,
       data: { organization_id: ctx.organizationId, role },
     })
 

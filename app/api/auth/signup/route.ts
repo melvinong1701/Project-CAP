@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+// Public org signup is disabled by default. Members join via emailed invites.
+const ALLOW_SELF_SIGNUP = process.env.NEXT_PUBLIC_ALLOW_SELF_SIGNUP === 'true'
+
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -24,6 +27,10 @@ type SignupPayload = {
 }
 
 export async function POST(request: NextRequest) {
+  if (!ALLOW_SELF_SIGNUP) {
+    return NextResponse.json({ error: 'Self-signup is disabled. Ask an admin for an invite.' }, { status: 403 })
+  }
+
   let payload: SignupPayload
 
   try {
