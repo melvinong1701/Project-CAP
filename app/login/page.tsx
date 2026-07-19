@@ -4,6 +4,10 @@ import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+// Members join via emailed invites, so public org signup is off by default.
+// Set NEXT_PUBLIC_ALLOW_SELF_SIGNUP="true" to re-enable "Create an account".
+const ALLOW_SELF_SIGNUP = process.env.NEXT_PUBLIC_ALLOW_SELF_SIGNUP === 'true'
+
 type AuthMode = 'login' | 'signup' | 'forgot'
 
 function LoginPage() {
@@ -19,6 +23,7 @@ function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   const switchMode = (nextMode: AuthMode) => {
+    if (nextMode === 'signup' && !ALLOW_SELF_SIGNUP) return
     setMode(nextMode)
     setError('')
     setSuccess('')
@@ -203,13 +208,15 @@ function LoginPage() {
             >
               Forgot password?
             </button>
-            <button
-              type="button"
-              onClick={() => switchMode('signup')}
-              className="font-medium text-indigo-600 hover:text-indigo-700"
-            >
-              Create an account
-            </button>
+            {ALLOW_SELF_SIGNUP && (
+              <button
+                type="button"
+                onClick={() => switchMode('signup')}
+                className="font-medium text-indigo-600 hover:text-indigo-700"
+              >
+                Create an account
+              </button>
+            )}
           </div>
         ) : (
           <button
