@@ -1,4 +1,5 @@
 'use client'
+import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import type { Store } from '@/lib/types'
 import { ChannelBadge } from './ChannelBadge'
@@ -9,6 +10,14 @@ interface SidebarProps {
   stores: Store[]
   activeFilter: string
   onFilterChange: (filter: string) => void
+}
+
+interface AccountResponse {
+  data?: {
+    account?: {
+      fullName?: string
+    }
+  }
 }
 
 const navItems = [
@@ -22,6 +31,27 @@ export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) 
   const router = useRouter()
   const pathname = usePathname()
   const totalUnread = stores.reduce((sum, s) => sum + s.unreadCount, 0)
+  const [userName, setUserName] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetch('/api/account')
+      .then(res => (res.ok ? res.json() : null))
+      .then((payload: AccountResponse | null) => {
+        if (cancelled) return
+
+        const name = payload?.data?.account?.fullName
+        if (name) setUserName(name)
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const userInitial = userName ? userName.trim().charAt(0).toUpperCase() : ''
 
   return (
     <div className="w-60 flex-shrink-0 flex flex-col border-r border-gray-100 bg-white min-h-0">
@@ -158,9 +188,13 @@ export function Sidebar({ stores, activeFilter, onFilterChange }: SidebarProps) 
           className="flex min-w-0 items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-colors hover:bg-gray-50"
         >
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center text-white text-xs font-semibold">
-            M
+            {userInitial}
           </div>
-          <span className="truncate text-sm text-gray-700 font-medium">Melvin</span>
+          {userName ? (
+            <span className="truncate text-sm text-gray-700 font-medium">{userName}</span>
+          ) : (
+            <span className="h-3.5 w-16 animate-pulse rounded bg-gray-100" />
+          )}
         </button>
         <button
           onClick={() => router.push('/settings')}
